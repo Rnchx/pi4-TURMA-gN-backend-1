@@ -1,6 +1,22 @@
 # Safra Online — Backend
 
-![Banner do Safra 2.0 Backend](assets/design/images/banner-safra-backend-light.png)
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/design/images/banner-safra-backend-dark.png"
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="assets/design/images/banner-safra-backend-light.png"
+  />
+  <img
+    src="assets/design/images/banner-safra-backend-light.png"
+    alt="Safra Online 2.0 — Backend"
+    width="100%"
+  />
+</picture>
+
+API responsável pelas regras de negócio, pelo gerenciamento de dados e pela integração dos serviços do Safra Online v2.0, um aplicativo de supermercado digital desenvolvido para fins acadêmicos.
 
 API responsável pelas regras de negócio, pelo gerenciamento de dados e pela integração dos serviços do Safra Online v2.0, um aplicativo de supermercado digital desenvolvido para fins acadêmicos.
 
