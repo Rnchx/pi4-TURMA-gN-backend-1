@@ -18,8 +18,6 @@
 
 API responsável pelas regras de negócio, pelo gerenciamento de dados e pela integração dos serviços do Safra Online v2.0, um aplicativo de supermercado digital desenvolvido para fins acadêmicos.
 
-API responsável pelas regras de negócio, pelo gerenciamento de dados e pela integração dos serviços do Safra Online v2.0, um aplicativo de supermercado digital desenvolvido para fins acadêmicos.
-
 ## Sobre o projeto
 
 O **Safra Online** é uma evolução do projeto Safra Online v1.0, criado com o objetivo de modernizar a experiência de compras em um supermercado digital.
@@ -39,9 +37,11 @@ As funcionalidades previstas para o backend incluem:
 - **Categorias e subcategorias:** disponibilização dos dados necessários à navegação pelo catálogo.
 - **Carrinho de compras:** suporte às operações relacionadas aos itens selecionados.
 - **Processamento de pedidos:** validação dos itens, cálculo dos valores e registro das compras.
-- **Checkout acadêmico:** suporte ao fluxo de finalização com métodos de pagamento simulados, como PIX e cartão.
+- **Compra demonstrativa:** finalização acadêmica sem cobrança e sem coleta de dados financeiros.
 - **Persistência de dados:** armazenamento das informações utilizando PostgreSQL.
 - **Integração com Java:** comunicação com um serviço complementar desenvolvido com Spring Boot.
+- **Assistente com IA:** interpretação opcional de pedidos por texto ou áudio pela API da OpenAI, com validação no catálogo local.
+- **Ofertas demonstrativas:** produtos promocionais cadastrados no próprio banco, sem consulta a mercados externos.
 - **Tratamento de erros:** respostas padronizadas para facilitar a comunicação com o frontend.
 
 > Esta lista descreve o escopo previsto do projeto. A disponibilidade de cada endpoint e funcionalidade depende do estágio atual da implementação.
@@ -56,6 +56,7 @@ As funcionalidades previstas para o backend incluem:
 | Spring Boot | Estruturação da aplicação Java |
 | Docker | Empacotamento e execução do serviço Java em contêiner |
 | PostgreSQL | Banco de dados relacional |
+| OpenAI API | Interpretação estruturada de pedidos e transcrição opcional de áudio |
 | npm | Gerenciamento de dependências do backend Node.js |
 | Git | Controle de versão |
 
@@ -74,15 +75,18 @@ React Native + Expo
 Backend principal
 Node.js + Express.js
         |
-        |----------------------|
-        |                      |
-        v                      v
-PostgreSQL             Serviço Java
-                       Spring Boot
+        |----------------------|----------------------|
+        |                      |                      |
+        v                      v                      v
+PostgreSQL             Serviço Java           API OpenAI
+                       Spring Boot             serviço externo
                        Docker
+                            |
+                            v
+                       PostgreSQL
 ```
 
-O frontend realiza as requisições ao backend Node.js, que centraliza o acesso às regras de negócio e à persistência de dados. Quando necessário, o backend poderá encaminhar operações ao serviço Java por meio de HTTP/REST, utilizando comunicação estruturada em JSON.
+O frontend realiza as requisições ao backend Node.js, que centraliza o catálogo, o carrinho, os cálculos e as integrações. O backend encaminha a confirmação ao serviço Java por HTTP/REST e usa a API externa da OpenAI para o assistente.
 
 O PostgreSQL será utilizado para persistir os dados da aplicação, de acordo com as responsabilidades definidas para cada serviço.
 
@@ -93,6 +97,10 @@ A separação permite incorporar Java e Docker ao projeto sem reescrever toda a 
 O frontend correspondente ao projeto está disponível em:
 
 [pi4-TURMA-gN-frontend](https://github.com/Rnchx/pi4-TURMA-gN-frontend)
+
+## Especificação dos fluxos e contratos
+
+A visão geral e os fluxos ficam em [docs/fluxos do frontend](https://github.com/Rnchx/pi4-TURMA-gN-frontend/tree/main/docs/fluxos). As interfaces definidas por este backend e pelo serviço Java ficam em [`docs/contratos`](docs/contratos).
 
 ## Pré-requisitos
 
@@ -141,6 +149,7 @@ DB_USER=seu_usuario
 DB_PASSWORD=sua_senha
 
 JAVA_SERVICE_URL=http://localhost:8080
+OPENAI_API_KEY=configure_fora_do_repositorio
 ```
 
 **Importante:** os nomes acima são exemplos de configuração. Confirme no código do projeto quais variáveis são realmente utilizadas e quais são obrigatórias. Não envie o arquivo `.env` com credenciais para o Git.
@@ -170,7 +179,7 @@ Entre as informações que poderão ser persistidas estão:
 - Produtos e categorias.
 - Pedidos e respectivos itens.
 - Quantidades e valores registrados nos pedidos.
-- Método de pagamento selecionado e seu status simulado.
+- Confirmações demonstrativas, sem método de pagamento nem cobrança.
 - Outras entidades necessárias às funcionalidades da aplicação.
 
 O modelo definitivo, as tabelas e os relacionamentos devem acompanhar a implementação real do banco de dados.
@@ -187,11 +196,11 @@ O modelo definitivo, as tabelas e os relacionamentos devem acompanhar a implemen
 
 O projeto prevê um serviço complementar desenvolvido em Java com Spring Boot e executado em um contêiner Docker.
 
-Esse serviço será independente do backend Node.js e se comunicará com ele por meio de requisições HTTP/REST, com troca de dados em JSON.
+Esse serviço é independente do backend Node.js, comunica-se com ele por HTTP/REST, gera a confirmação demonstrativa e persiste a compra e seus itens no PostgreSQL.
 
 A integração deverá definir:
 
-- A responsabilidade específica do serviço Java.
+- A geração e persistência da confirmação demonstrativa.
 - Os endpoints disponibilizados.
 - O formato das requisições e respostas.
 - O endereço de comunicação entre os serviços.
@@ -207,7 +216,7 @@ As rotas deverão ser organizadas de acordo com os recursos da aplicação, mant
 
 As operações de checkout deverão validar os dados no servidor, recalcular o valor total dos produtos e registrar o pedido de acordo com as regras definidas.
 
-Os métodos de pagamento serão utilizados em caráter acadêmico. O sistema não deverá processar pagamentos reais nem solicitar dados financeiros verdadeiros.
+O sistema não processa pagamentos reais, não simula PIX ou cartão e não solicita dados financeiros. A finalização apenas registra e exibe uma confirmação demonstrativa.
 
 ## Decisões de arquitetura
 
