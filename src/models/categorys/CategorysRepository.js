@@ -1,99 +1,36 @@
-import db from "../../database/index.js";
-
 export default class CategorysRepository {
-  constructor() {
-    this.db = db;
+  constructor(db) { this.db = db; }
+
+  getCategorys() {
+    return this.db.manyOrNone('SELECT * FROM categorias WHERE ativo ORDER BY id');
   }
 
-  async getCategorys() {
-    try {
-      const allCategorys = await this.db.manyOrNone("SELECT * FROM categorys");
-      return allCategorys;
-    } catch (error) {
-      console.error("Failed to get categorys:", error);
-      throw error;
-    }
+  getSubcategories() {
+    return this.db.manyOrNone(`SELECT s.* FROM subcategorias s JOIN categorias c ON c.id=s.categoria_id
+      WHERE s.ativo AND c.ativo ORDER BY s.id`);
   }
 
-  async getCategoryById(id) {
-    try {
-      const product = await this.db.oneOrNone(
-        "SELECT * FROM categorys WHERE id = $1",
-        id
-      );
-      return product;
-    } catch (error) {
-      console.error(`Failed to get category by id ${id}:`, error);
-      throw error;
-    }
+  getCategoryById(id) {
+    return this.db.oneOrNone('SELECT * FROM categorias WHERE id = $1 AND ativo', [id]);
   }
 
-  async getCategoryByName(name) {
-    try {
-      const category = await this.db.manyOrNone(
-        "SELECT * FROM categorys WHERE name = $1",
-        name
-      );
-      return category;
-    } catch (error) {
-      console.error(`Failed to get category by name ${name}:`, error);
-      throw error;
-    }
+  getCategoryByName(nome) {
+    return this.db.oneOrNone('SELECT * FROM categorias WHERE nome = $1 AND ativo', [nome]);
   }
 
-  async filterProductByCategory(category) {
-    try {
-      const product = await this.db.manyOrNone(
-        "SELECT * FROM categorys INNER JOIN products ON categorys.id = products.idcategory WHERE categorys.name = $1",
-        category
-      );
-      return product;
-    } catch (error) {
-      console.error(`Failed to get filter product by category ${category}:`, error);
-      throw error;
-    }
+  getSubcategoryById(id) {
+    return this.db.oneOrNone('SELECT * FROM subcategorias WHERE id = $1 AND ativo', [id]);
   }
 
-  async createCategory(category) {
-    console.log(category);
-    try {
-      await this.db.none(
-        "INSERT INTO categorys (name) VALUES ($1)",
-        [category.name]
-      );
-      return category;
-    } catch (error) {
-      console.error("Failed to create category:", error);
-      throw error;
-    }
+  createCategory(category) {
+    return this.db.one('INSERT INTO categorias(nome) VALUES($1) RETURNING *', [category.nome]);
   }
 
-  async updateCategory(id, name) {
-    try {
-      const product = await this.getProductById(id);
-
-      if (!product) {
-        return null;
-      }
-
-      const updatedProduct = await this.db.one(
-        "UPDATE products SET name = $1 WHERE id = $2 RETURNING *",
-        [name, id]
-      );
-
-      return updatedProduct;
-    } catch (error) {
-      console.error(`Failed to update product ${id}:`, error);
-      throw error;
-    }
+  updateCategory(id, category) {
+    return this.db.oneOrNone('UPDATE categorias SET nome = $1 WHERE id = $2 AND ativo RETURNING *', [category.nome, id]);
   }
 
-  async deleteCategory(id) {
-    try {
-      await this.db.none("DELETE FROM categorys WHERE id = $1", id);
-    } catch (error) {
-      console.error(`Failed to delete category ${id}:`, error);
-      throw error;
-    }
+  deleteCategory(id) {
+    return this.db.oneOrNone('DELETE FROM categorias WHERE id = $1 AND ativo RETURNING id', [id]);
   }
 }

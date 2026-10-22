@@ -1,25 +1,20 @@
-import { Router } from "express";
+import { Router } from 'express';
+import { productsController } from '../controllers/products.controller.js';
 
-import {
-  getProducts,
-  getProductById,
-  getProductByName,
-  getProductByType,
-  getProductidCategory,
-  createProduct,
-  updateProduct,
-  deleteProduct,
-} from "../controllers/products.controller.js";
-
-const productsRouter = Router();
-
-productsRouter.get("/", getProducts);
-productsRouter.get("/:id", getProductById);
-productsRouter.get("/name/:name", getProductByName);
-productsRouter.get("/type/:type", getProductByType);
-productsRouter.get("/idCategory/:category", getProductidCategory);
-productsRouter.post("/", createProduct);
-productsRouter.put("/:id", updateProduct);
-productsRouter.delete("/:id", deleteProduct);
-
-export default productsRouter;
+export default function productsRouter(catalog, legacy = false) {
+  const router = Router();
+  const ctrl = productsController(catalog, legacy);
+  router.get('/', ctrl.list);
+  if (legacy) {
+    router.get('/name/:name', ctrl.byName);
+    router.get('/type/:type', ctrl.byType);
+    router.get('/idcategory/:category', ctrl.byCategory);
+  } else {
+    router.get('/tipo/:type', ctrl.byType);
+  }
+  router.get('/:id', ctrl.detail);
+  router.post('/', ctrl.create);
+  router.put('/:id', ctrl.update);
+  router.delete('/:id', ctrl.remove);
+  return router;
+}

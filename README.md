@@ -102,95 +102,89 @@ O frontend correspondente ao projeto está disponível em:
 
 A visão geral e os fluxos ficam em [docs/fluxos do frontend](https://github.com/Rnchx/pi4-TURMA-gN-frontend/tree/main/docs/fluxos). As interfaces definidas por este backend e pelo serviço Java ficam em [`docs/contratos`](docs/contratos).
 
-## Pré-requisitos
+## Execução do catálogo — Ciclo 2
 
-Antes de executar o projeto, certifique-se de ter instalado:
+Requer **Node.js 22 ou superior** e **PostgreSQL 14 ou superior**. Não é necessário Java, Docker ou chave OpenAI para este ciclo. A implementação atual atende catálogo, classificação e detalhes (E1–E3); as demais funcionalidades acima continuam previstas.
 
-- [Node.js](https://nodejs.org/)
-- npm, normalmente instalado com o Node.js
-- [Git](https://git-scm.com/)
-- [PostgreSQL](https://www.postgresql.org/) ou um ambiente de banco de dados acessível
-- [Docker](https://www.docker.com/) para executar o serviço Java quando sua configuração estiver disponível
-- JDK compatível com a versão do projeto, caso precise executar ou desenvolver o serviço Java fora do contêiner
+1. Instale com `npm ci`.
+2. Copie `.env.example` para `.env` e configure o banco **já criado**, com um usuário autorizado a criar tabelas. Nenhuma credencial real acompanha o repositório.
+3. Execute `npm run db:check`, `npm run db:migrate` e, para dados demonstrativos, `npm run db:seed`.
+4. Inicie com `npm start` ou `npm run dev` (reinício ao editar arquivos).
 
-## Como executar o backend Node.js
+| Variável | Uso |
+|---|---|
+| PORT | Porta HTTP; padrão 4000. |
+| DB_HOST / DB_PORT | Host e porta PostgreSQL; padrões localhost e 5432. |
+| DB_NAME | Banco existente; padrão safra. |
+| DB_USER / DB_PASSWORD | Credenciais locais; senha passada em objeto de conexão, sem concatenar URI. |
+| NODE_ENV | development ou production. |
+| CORS_ORIGINS | Origens exatas separadas por vírgula, sem barra final, caminhos ou curingas. |
 
-### 1. Clonar o repositório
+Em desenvolvimento, o padrão CORS permite `http://localhost:8081`, `http://127.0.0.1:8081` e `http://localhost:19006`. Se usar outra porta ou IP de rede no Expo Web, inclua sua origem exata. Em produção, configure somente as origens publicadas; sem configuração, nenhuma origem de navegador é autorizada. Chamadas sem cabeçalho Origin, como as de apps nativos e ferramentas HTTP, continuam aceitas. CORS controla navegadores e não substitui autenticação.
 
-```bash
-git clone https://github.com/Rnchx/pi4-TURMA-gN-backend-1.git
-```
+No frontend, crie seu `.env` local a partir do exemplo e configure `EXPO_PUBLIC_API_URL=http://localhost:4000` para Expo Web neste computador; reinicie o Expo. Para dispositivo físico, use o IP acessível do computador; no Android Emulator, normalmente `http://10.0.2.2:4000`. Não publique credenciais em variáveis EXPO_PUBLIC_.
 
-Entre na pasta do projeto:
+### Banco e ciclo de vida
 
-```bash
-cd pi4-TURMA-gN-backend-1
-```
+- `src/database/index.js` apenas cria/configura o pool; importar módulos não consulta nem cria tabelas.
+- `db:check` verifica conexão. `db:migrate` aplica arquivos versionados em transação, com registro em `schema_migrations` e trava contra execução concorrente.
+- A primeira migration cria `categorias`, `subcategorias` e `produtos`, alinhadas a CT2/CT4/CT5. Se `categorys` e `products` legadas existirem, importa os registros preservando IDs e cria subcategorias a partir de `type`. As tabelas originais são preservadas como histórico, sem receber novas escritas da API. Faça backup antes de migrar um banco existente.
+- Duplicidade de categorias, referências inválidas ou dados incompatíveis com as restrições interrompem e revertem a migration; nenhum dado é apagado ou ajustado silenciosamente. Corrija os dados com revisão antes de tentar novamente.
+- `src/database/create-tables.sql` é o arquivo histórico original; não é executado pelo servidor ou pelo migrador. Não o utilize para inicializar novos bancos.
+- `db:seed` é explícito e repetível: 58 produtos, 5 categorias e seus tipos/subcategorias. Reutiliza dados/imagens do SQL original; os preços e a validade não têm finalidade comercial. Produtos demonstrativos têm chave fixa; repetir a carga atualiza esses registros sem duplicá-los, preservando IDs e cadastros manuais. As imagens HTTPS externas dependem dos respectivos hosts.
+- `npm start` abre HTTP e verifica a conexão, capturando a falha. Não migra nem popula o banco. Consultas possuem limite de tempo; a API volta a atender quando o PostgreSQL retorna.
+- SIGINT/SIGTERM encerram HTTP e o pool. `db:check`, `db:migrate` e `db:seed` retornam código 1 em caso de falha, sem imprimir credenciais ou consultas.
 
-### 2. Instalar as dependências
+### Saúde
 
-```bash
-npm install
-```
+| Rota | Banco ativo | Banco desligado |
+|---|---|---|
+| GET /health/live | 200, http=ok | 200, http=ok |
+| GET /health ou /health/ready | 200, http=ok, banco=disponivel | 503, http=ok, banco=indisponivel, codigo e mensagem |
 
-### 3. Configurar as variáveis de ambiente
+Readiness verifica conectividade; migrations precisam ser aplicadas separadamente. Erros nas consultas do catálogo seguem os contratos: HTTP 500 com `codigo=erroInterno` e mensagem compreensível, sem detalhes SQL, stack trace ou credenciais.
 
-Crie um arquivo `.env` na raiz do projeto, de acordo com as variáveis utilizadas pela aplicação.
+### Rotas oficiais e complementares deste ciclo
 
-Exemplo ilustrativo:
+| Método e rota | Resposta / finalidade |
+|---|---|
+| GET /produtos | CT1: totalProdutos e produtos ativos. |
+| GET /categorias | CT3: categorias ativas com subcategorias ativas. |
+| GET /categorias/:categoriaId/subcategorias/:subcategoriaId/produtos | CT6: valida existência e vínculo da classificação. |
+| GET /produtos/:produtoId | CT7: detalhes, preço e classificação do produto ativo. |
+| GET /categorias/:categoriaId/produtos | Complemento: produtos ativos da categoria (relacionados). |
+| GET /produtos/tipo/:tipo | Complemento: produtos pelo nome do tipo/subcategoria. |
+| GET /categorias/:categoriaId | Complemento: categoria por ID. |
+| POST /produtos; PUT /produtos/:produtoId | Cadastro e substituição integral dos campos nome, preco, descricao, imagemUrl, categoriaId e subcategoriaId. |
+| POST /categorias; PUT /categorias/:categoriaId | Cadastro/alteração de nome (campo nome). |
+| DELETE /produtos/:produtoId | Desativa o produto; retorna 204 ou 404. |
+| DELETE /categorias/:categoriaId | Remove categoria sem vínculos; 409 se houver dependências. |
 
-```env
-PORT=3000
+As escritas exigem campos completos, texto não vazio e limites de tamanho, preço não negativo com até duas casas e imagem HTTPS sem credenciais. IDs são inteiros positivos de 32 bits; categoria e subcategoria devem existir e ser compatíveis. Os campos de oferta aparecem nas leituras para compatibilidade com os contratos, sempre falsos na demonstração deste ciclo; gestão de ofertas não foi implementada. Listas vazias retornam 200 com array vazio. Erros JSON têm `codigo` e `mensagem`; validação retorna 400, ausência retorna 404, conflito retorna 409. Os cadastros não têm autenticação neste ciclo; não exponha esta API demonstrativa publicamente.
 
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=safra
-DB_USER=seu_usuario
-DB_PASSWORD=sua_senha
+### Aliases temporários para o frontend atual
 
-JAVA_SERVICE_URL=http://localhost:8080
-OPENAI_API_KEY=configure_fora_do_repositorio
-```
+Não foi necessário alterar o frontend. Estes adaptadores usam os mesmos serviços e repositórios das rotas oficiais e enviam `Deprecation: true`:
 
-**Importante:** os nomes acima são exemplos de configuração. Confirme no código do projeto quais variáveis são realmente utilizadas e quais são obrigatórias. Não envie o arquivo `.env` com credenciais para o Git.
+| Alias | Equivalente / formato legado |
+|---|---|
+| GET /products | /produtos; totalProducts e products. |
+| GET /products/:id | /produtos/:produtoId; product. |
+| GET /products/idcategory/:category | /categorias/:categoriaId/produtos; product como lista. Aceita também a grafia idCategory. |
+| GET /products/type/:type | /produtos/tipo/:tipo; product como lista. |
+| GET /categorys | /categorias; totalCategorys e categorys. |
+| GET /categorys/:id | /categorias/:categoriaId; category. |
+| GET /categorys/filter/:category | Resolve o nome da categoria e usa a mesma consulta por categoria; products. |
+| GET /products/name/:name; GET /categorys/name/:name | Busca exata por nome; product ou category (lista), respectivamente. |
+| POST/PUT/DELETE /products[/:id]; /categorys[/:id] | Mesmas operações de cadastro, atualização e remoção, com serialização legada. |
 
-### 4. Iniciar o servidor
+Produtos legados usam `id, name, price, description, type, validity, photo, idcategory`. Na escrita também é aceito `idCategory`; valores conflitantes são rejeitados. O tipo é associado a uma subcategoria da categoria informada, criada em transação quando necessário. Categorias legadas usam `id, name`. Os aliases permanecem apenas até o frontend adotar os contratos oficiais; não são uma segunda API de regras de negócio.
 
-Utilize o script configurado no `package.json`. Por exemplo, se houver um script `start`:
+### Testes
 
-```bash
-npm start
-```
+`npm test` executa testes HTTP com Supertest e **PostgreSQL real temporário**, instalado como dependência de desenvolvimento. Não utiliza o DB_* do ambiente, não exige banco externo e não modifica bases existentes. O cluster usa porta livre, autenticação SCRAM, senha aleatória e bind em 127.0.0.1; seus arquivos são removidos após os testes. Instale dependências opcionais e permita o postinstall do pacote de binários `@embedded-postgres/<plataforma>`, caso o gerenciador solicite. Em Linux, rode como usuário sem privilégios de root; o teste não cria usuários do sistema. `npm ci --omit=dev` instala apenas as dependências necessárias ao servidor.
 
-Se o projeto utilizar um script de desenvolvimento, como `dev`, execute:
-
-```bash
-npm run dev
-```
-
-A URL e a porta de execução dependerão das configurações da aplicação.
-
-## Banco de dados
-
-O PostgreSQL será utilizado como banco de dados relacional para armazenar as informações do sistema, de acordo com o modelo de dados definido durante o desenvolvimento.
-
-Entre as informações que poderão ser persistidas estão:
-
-- Produtos e categorias.
-- Pedidos e respectivos itens.
-- Quantidades e valores registrados nos pedidos.
-- Confirmações demonstrativas, sem método de pagamento nem cobrança.
-- Outras entidades necessárias às funcionalidades da aplicação.
-
-O modelo definitivo, as tabelas e os relacionamentos devem acompanhar a implementação real do banco de dados.
-
-### Boas práticas
-
-- Manter credenciais fora do código-fonte.
-- Validar os dados recebidos pela API.
-- Calcular os valores dos pedidos no backend, utilizando os preços oficiais dos produtos.
-- Garantir que os valores persistidos correspondam aos dados validados.
-- Utilizar migrations ou outro mecanismo de versionamento do esquema, caso adotado pelo projeto.
+A suíte cobre CT1/CT3/CT6/CT7, aliases, filtros, criação/atualização, entradas inválidas, conflitos, registros inativos, migration do legado, repetição da carga, CORS, saúde, inicialização sem banco e desligamento/recuperação real do PostgreSQL. O teste visual integrado depende do frontend Expo em execução e é documentado no relatório do ciclo.
 
 ## Serviço Java com Spring Boot e Docker
 
