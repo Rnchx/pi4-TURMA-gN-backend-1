@@ -1,172 +1,50 @@
-import Product from "../models/products/Product.js"
-import ProductsRepository from "../models/products/ProductsRepository.js";
+import Product from '../models/products/Product.js';
+import { ApiError, endpoint } from '../http/errors.js';
+import { positiveId, productBody, text } from '../http/validation.js';
+import { product, legacyProduct } from '../http/serializers.js';
 
-const productsRepository = new ProductsRepository();
-
-function verifyUrl(url) {
-  var imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp'];
-
-  var extension = url.split('.').pop().toLowerCase();
-
-  return imageExtensions.includes(extension);
+export function productsController(catalog, legacy = false) {
+  const serialize = row => legacy ? legacyProduct(row) : product(row, true);
+  const id = req => positiveId(req.params.id, 'produtoIdInvalido', 'Informe um produto válido.');
+  return {
+    list: endpoint(async (req, res) => {
+      const rows = await catalog.products.getProducts();
+      res.json(legacy ? { totalProducts: rows.length, products: rows.map(legacyProduct) }
+        : { totalProdutos: rows.length, produtos: rows.map(row => product(row)) });
+    }, 'Não foi possível carregar o catálogo.'),
+    detail: endpoint(async (req, res) => {
+      const row = await catalog.product(id(req));
+      res.json(legacy ? { product: serialize(row) } : serialize(row));
+    }, 'Não foi possível consultar o produto.'),
+    byName: endpoint(async (req, res) => {
+      const row = await catalog.products.getProductByName(text(req.params.name, 255, 'o nome'));
+      if (!row) throw new ApiError(404, 'produtoNaoEncontrado', 'Produto não encontrado.');
+      res.json({ product: legacyProduct(row) });
+    }, 'Não foi possível consultar o produto.'),
+    byType: endpoint(async (req, res) => {
+      const rows = await catalog.products.getProductByType(text(req.params.type, 100, 'o tipo'));
+      res.json(legacy ? { product: rows.map(legacyProduct) } : { produtos: rows.map(row => product(row)) });
+    }, 'Não foi possível filtrar os produtos.'),
+    byCategory: endpoint(async (req, res) => {
+      const categoryId = positiveId(req.params.category);
+      const rows = await catalog.byCategory(categoryId);
+      res.json(legacy ? { product: rows.map(legacyProduct) }
+        : { categoriaId: categoryId, produtos: rows.map(row => product(row)) });
+    }, 'Não foi possível filtrar os produtos.'),
+    create: endpoint(async (req, res) => {
+      const row = await catalog.saveProduct(new Product(productBody(req.body, legacy)));
+      res.status(201).json(legacy ? { product: serialize(row) } : serialize(row));
+    }, 'Não foi possível cadastrar o produto.'),
+    update: endpoint(async (req, res) => {
+      const productId = id(req);
+      const row = await catalog.saveProduct(new Product(productBody(req.body, legacy)), productId);
+      if (!row) throw new ApiError(404, 'produtoNaoEncontrado', 'Produto não encontrado.');
+      res.json(legacy ? { updatedProduct: serialize(row) } : serialize(row));
+    }, 'Não foi possível atualizar o produto.'),
+    remove: endpoint(async (req, res) => {
+      const row = await catalog.products.deleteProduct(id(req));
+      if (!row) throw new ApiError(404, 'produtoNaoEncontrado', 'Produto não encontrado.');
+      res.status(204).end();
+    }, 'Não foi possível remover o produto.'),
+  };
 }
-
-export const getProducts = async (req, res) => {
-  try {
-    const products = await productsRepository.getProducts();
-    if (!products || products.length === 0) {
-      return res.status(404).send({ message: "Não há produtos cadastrados" });
-    }
-    return res.status(200).send({ totalProducts: products.length, products });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao buscar produtos", error: error.message });
-  }
-};
-
-export const getProductById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const product = await productsRepository.getProductById(id);
-    if (!product) {
-      return res.status(404).send({ message: "Produto não encontrado" });
-    }
-    return res.status(200).send({ message: "Produto encontrado", product });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao buscar produto", error: error.message });
-  }
-};
-
-export const getProductByName = async (req, res) => {
-  try {
-    const { name } = req.params;
-    const product = await productsRepository.getProductByName(name);
-
-    if (!product) {
-      return res.status(404).send({ message: "Produto não encontrado" });
-    }
-
-    return res.status(200).send({ message: "Produto encontrado", product });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao buscar produto", error: error.message });
-  }
-};
-
-export const getProductByType = async (req, res) => {
-  try {
-    const { type } = req.params;
-    const product = await productsRepository.getProductByType(type);
-
-    if (!product) {
-      return res.status(404).send({ message: "Produto não encontrado" });
-    }
-
-    return res.status(200).send({ message: "Produto encontrado", product });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao buscar produto", error: error.message });
-  }
-};
-
-export const getProductidCategory = async (req, res) => {
-  try {
-    const { category } = req.params;
-    const product = await productsRepository.getProductByidCategory(category);
-
-    if (!product) {
-      return res.status(404).send({ message: "Produto não encontrado" });
-    }
-
-    return res.status(200).send({ message: "Produto encontrado", product });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao buscar produto", error: error.message });
-  }
-};
-
-export const createProduct = async (req, res) => {
-  try {
-    const { name, price, description, type, validity, photo, idcategory } = req.body;
-
-    if (name == "" || price == "" || description == "" || type == "" || validity == "" || photo == "" || idcategory == "") {
-      return res.status(400).send({ message: "Preencha todos os campos" });
-    }
-
-    if (!verifyUrl(photo)) {
-      return res.status(400).send({ message: "URL da imagem inválida" });
-    }
-
-
-    const product = new Product(name, price, description, type, validity, photo, idcategory);
-
-    await productsRepository.createProduct(product);
-
-    return res.status(200).send({ message: "Produto criado com sucesso" });
-
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao cadastrar o produto", error: error.message });
-  }
-};
-
-export const updateProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, price, description, type, validity, photo, idcategory } = req.body;
-    const productById = await productsRepository.getProductById(id);
-
-    if (!productById) {
-      return res.status(404).send({ message: "Produto não encontrado" });
-    }
-
-    if (!verifyUrl(photo)) {
-      return res.status(400).send({ message: "URL da imagem inválida" });
-    }
-
-    if (name == "" || price == "" || description == "" || type == "" || validity == "" || photo == "" || idcategory == "") {
-      return res.status(400).send({ message: "Preencha todos os campos" });
-    }
-
-    const updatedProduct = await productsRepository.updateProduct(
-      id,
-      name,
-      price,
-      description,
-      type,
-      validity,
-      photo,
-      idcategory
-    );
-    return res
-      .status(200)
-      .send({ message: "Produto atualizado com sucesso", updatedProduct });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao atualizar produto", error: error.message });
-  }
-};
-
-export const deleteProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const product = await productsRepository.getProductById(id);
-    if (!product) {
-      return res.status(404).send({ message: "Produto não encontrado" });
-    }
-    await productsRepository.deleteProduct(id);
-    return res.status(200).send({ message: "Produto deletado com sucesso" });
-  } catch (error) {
-    return res
-      .status(500)
-      .send({ message: "Erro ao tentar deletar o produto", error: error.message });
-  }
-};

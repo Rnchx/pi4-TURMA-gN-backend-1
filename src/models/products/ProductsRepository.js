@@ -1,111 +1,62 @@
-import db from "../../database/index.js";
+const select = `SELECT p.*, s.nome AS tipo FROM produtos p
+  JOIN subcategorias s ON s.id = p.subcategoria_id AND s.categoria_id = p.categoria_id
+  JOIN categorias c ON c.id = p.categoria_id`;
+const active = 'p.ativo AND s.ativo AND c.ativo';
 
 export default class ProductsRepository {
-  constructor() {
-    this.db = db;
+  constructor(db) { this.db = db; }
+
+  getProducts() {
+    return this.db.manyOrNone(`${select} WHERE ${active} ORDER BY p.id`);
   }
 
-  async getProducts() {
-    try {
-      const allProducts = await this.db.manyOrNone("SELECT * FROM products");
-      return allProducts;
-    } catch (error) {
-      console.error("Failed to get products:", error);
-      throw error;
-    }
+  getProductById(id) {
+    return this.db.oneOrNone(`${select} WHERE ${active} AND p.id = $1`, [id]);
   }
 
-  async getProductById(id) {
-    try {
-      const product = await this.db.oneOrNone(
-        "SELECT * FROM products WHERE id = $1",
-        id
-      );
-      return product;
-    } catch (error) {
-      console.error(`Failed to get product by id ${id}:`, error);
-      throw error;
-    }
+  getProductByName(nome) {
+    return this.db.oneOrNone(`${select} WHERE ${active} AND p.nome = $1 ORDER BY p.id LIMIT 1`, [nome]);
   }
 
-  async getProductByName(name) {
-    try {
-      const product = await this.db.oneOrNone(
-        "SELECT * FROM products WHERE name = $1",
-        name
-      );
-      return product;
-    } catch (error) {
-      console.error(`Failed to get product by name ${name}:`, error);
-      throw error;
-    }
+  getProductByType(tipo) {
+    return this.db.manyOrNone(`${select} WHERE ${active} AND s.nome = $1 ORDER BY p.id`, [tipo]);
   }
 
-  async getProductByType(type) {
-    try {
-      const product = await this.db.manyOrNone(
-        "SELECT * FROM products WHERE type = $1",
-        type
-      );
-      return product;
-    } catch (error) {
-      console.error(`Failed to get product by type ${type}:`, error);
-      throw error;
-    }
+  getProductByidCategory(id) {
+    return this.db.manyOrNone(`${select} WHERE ${active} AND p.categoria_id = $1 ORDER BY p.id`, [id]);
   }
 
-  async getProductByidCategory(category) {
-    try {
-      const product = await this.db.manyOrNone(
-        "SELECT * FROM products WHERE idcategory = $1",
-        category
-      );
-      return product;
-    } catch (error) {
-      console.error(`Failed to get product by category ${type}:`, error);
-      throw error;
-    }
+  getByClassification(categoriaId, subcategoriaId) {
+    return this.db.manyOrNone(`${select} WHERE ${active}
+      AND p.categoria_id = $1 AND p.subcategoria_id = $2 ORDER BY p.id`, [categoriaId, subcategoriaId]);
   }
 
-  async createProduct(product) {
-    try {
-      await this.db.none(
-        "INSERT INTO products (name, price, description, type, validity, photo, idcategory) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        [product.name, product.price, product.description, product.type, product.validity, product.photo, product.idcategory]
-      );
-      return product;
-    } catch (error) {
-      console.error("Failed to create product:", error);
-      throw error;
-    }
-  }
-
-  async updateProduct(id, name, price, description, type, validity, photo, idcategory) {
-    try {
-      const product = await this.getProductById(id);
-
-      if (!product) {
-        return null;
+  async save(product, id) {
+    return this.db.tx(async tx => {
+      let subcategoryId = product.subcategoriaId;
+      if (product.tipo) {
+        // A escrita legada usa o nome do tipo; há uma única subcategoria por categoria/nome.
+        const row = await tx.one(`INSERT INTO subcategorias(categoria_id, nome) VALUES($1, $2)
+          ON CONFLICT(categoria_id, nome) DO UPDATE SET nome = EXCLUDED.nome RETURNING id`,
+        [product.categoriaId, product.tipo]);
+        subcategoryId = row.id;
       }
-
-      const updatedProduct = await this.db.one(
-        "UPDATE products SET name = $1, price = $2, description = $3, type = $4, validity = $5, photo = $6, idcategory = $7 WHERE id = $8 RETURNING *",
-        [name, price, description, type, validity, photo, idcategory, id]
-      );
-
-      return updatedProduct;
-    } catch (error) {
-      console.error(`Failed to update product ${id}:`, error);
-      throw error;
-    }
+      const values = [product.nome, product.preco, product.descricao, product.imagemUrl,
+        product.categoriaId, subcategoryId, product.validade];
+      const row = id === undefined
+        ? await tx.one(`INSERT INTO produtos(nome, preco, descricao, imagem_url, categoria_id, subcategoria_id, validade)
+            VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, values)
+        : await tx.oneOrNone(`UPDATE produtos SET nome=$1, preco=$2, descricao=$3, imagem_url=$4,
+            categoria_id=$5, subcategoria_id=$6, validade=$7, atualizado_em=now() WHERE id=$8 AND ativo RETURNING id`, [...values, id]);
+      if (!row) return null;
+      return tx.one(`${select} WHERE p.id = $1`, [row.id]);
+    });
   }
 
-  async deleteProduct(id) {
-    try {
-      await this.db.none("DELETE FROM products WHERE id = $1", id);
-    } catch (error) {
-      console.error(`Failed to delete product ${id}:`, error);
-      throw error;
-    }
+  createProduct(product) { return this.save(product); }
+  updateProduct(id, product) { return this.save(product, id); }
+
+  deleteProduct(id) {
+    return this.db.oneOrNone('UPDATE produtos SET ativo = false, atualizado_em = now() WHERE id = $1 AND ativo RETURNING id', [id]);
   }
 }
