@@ -104,10 +104,10 @@ A visão geral e os fluxos ficam em [docs/fluxos do frontend](https://github.com
 
 ## Execução do catálogo — Ciclo 2
 
-Requer **Node.js 22 ou superior** e **PostgreSQL 14 ou superior**. Não é necessário Java, Docker ou chave OpenAI para este ciclo. A implementação atual atende catálogo, classificação e detalhes (E1–E3); as demais funcionalidades acima continuam previstas.
+Requer **Node.js 22 ou superior** e **PostgreSQL 14 ou superior**. O PostgreSQL pode ser o do Docker Compose (veja [Ambiente Docker](#ambiente-docker-postgresql-e-serviço-java)) ou uma instalação local. Não é necessária chave OpenAI. A implementação atual atende catálogo, classificação e detalhes (E1–E3); as demais funcionalidades acima continuam previstas.
 
 1. Instale com `npm ci`.
-2. Copie `.env.example` para `.env` e configure o banco **já criado**, com um usuário autorizado a criar tabelas. Nenhuma credencial real acompanha o repositório.
+2. Copie `.env.example` para `.env` e configure o banco: o do Docker Compose (criado com as credenciais do próprio `.env`) ou um banco **já criado**, com um usuário autorizado a criar tabelas. Nenhuma credencial real acompanha o repositório.
 3. Execute `npm run db:check`, `npm run db:migrate` e, para dados demonstrativos, `npm run db:seed`.
 4. Inicie com `npm start` ou `npm run dev` (reinício ao editar arquivos).
 
@@ -188,19 +188,148 @@ A suíte cobre CT1/CT3/CT6/CT7, aliases, filtros, criação/atualização, entra
 
 ## Serviço Java com Spring Boot e Docker
 
-O projeto prevê um serviço complementar desenvolvido em Java com Spring Boot e executado em um contêiner Docker.
+O Serviço de Confirmação ([`services/confirmacao-java`](services/confirmacao-java)) é independente do backend Node.js (ADR 0004), executa em contêiner Docker (ADR 0005) e se comunica com o Node por HTTP/REST com JSON. Ele será responsável por CT16 (gerar a confirmação demonstrativa) e por CT17/CT18 (persistir a compra e seus itens).
 
-Esse serviço é independente do backend Node.js, comunica-se com ele por HTTP/REST, gera a confirmação demonstrativa e persiste a compra e seus itens no PostgreSQL.
+Neste ciclo existe somente a fundação: inicialização, conexão controlada com o PostgreSQL, saúde (liveness/readiness), erros JSON padronizados e testes. **CT16 ainda não está implementado**: CT17 exige chave estrangeira para `carrinhos.id` (CT9), e o carrinho persistido (CT8–CT15) ainda não existe. Nenhuma rota de confirmação é exposta até lá.
 
-A integração deverá definir:
+| Item | Valor |
+|---|---|
+| Linguagem / framework | Java 21 (LTS, Eclipse Temurin) / Spring Boot 4.1.2 |
+| Build | Maven 3.9.16 via wrapper versionado (`mvnw`, checksum SHA-256 fixado) |
+| Imagem | `safra/confirmacao-java:0.1.0`, build em duas etapas; a final contém só o JRE e o JAR, roda como usuário `safra` (uid 10001) |
+| Porta | `SERVER_PORT` (padrão 8080), publicada em `127.0.0.1:${JAVA_PORT}` |
+| Perfil | `docker`: banco em `postgres:5432` (nome do serviço na rede `safra-net`) |
 
-- A geração e persistência da confirmação demonstrativa.
-- Os endpoints disponibilizados.
-- O formato das requisições e respostas.
-- O endereço de comunicação entre os serviços.
-- O tratamento de falhas e indisponibilidade.
+| Rota | Banco ativo | Banco desligado |
+|---|---|---|
+| GET / | 200, `{"servico":"safra-confirmacao",...}` | 200 |
+| GET /actuator/health/liveness | 200, `UP` | 200, `UP` (processo vivo) |
+| GET /actuator/health/readiness | 200, `UP`, `db: UP` | 503, `DOWN`, `db: DOWN` |
+| Outras rotas | 404 `{"codigo":"rotaNaoEncontrada","mensagem":"Rota não encontrada."}` | igual |
 
-A configuração de execução dependerá dos arquivos de build Java e Docker definidos pela equipe. Os comandos definitivos serão documentados quando essa estrutura estiver estabelecida.
+O Actuator expõe somente `health`, sem detalhes (URL JDBC, versões ou credenciais). Erros seguem o formato `{"codigo", "mensagem"}` dos contratos, sem stack trace. Logs vão para stdout/stderr (`docker compose logs`). O encerramento é gracioso: no SIGTERM, o Tomcat para de aceitar conexões, conclui as requisições ativas (até 20 s) e fecha o pool. O código de saída 143 é o normal da JVM para SIGTERM.
+
+### Relação com o exemplo cliente-servidor ("Fazedor de Continhas")
+
+| Conceito do exemplo | Adaptação no SAFRA |
+|---|---|
+| Servidor iniciado antes do cliente | Compose sobe o Java depois do PostgreSQL saudável; o Node é iniciado depois |
+| Servidor aguardando solicitações | Spring Boot escutando HTTP em `SERVER_PORT` |
+| Host e porta por argumento | Variáveis de ambiente (`DB_HOST`, `DB_PORT`, `SERVER_PORT`, `JAVA_PORT`) |
+| Sockets e objetos serializados | HTTP/REST com JSON |
+| Threads manuais por cliente | Pool de threads do Tomcat gerenciado pelo Spring Boot |
+| Tratamento de indisponibilidade | Readiness 503 com banco fora; Node deverá tratar o Java fora do ar (CT16) |
+| Desligamento manual | `docker compose stop` envia SIGTERM e o encerramento é gracioso |
+
+## Ambiente Docker: PostgreSQL e serviço Java
+
+```mermaid
+flowchart LR
+  subgraph host["Máquina (host)"]
+    node["API SAFRA<br/>Node.js + Express<br/>npm start / db:*"]
+  end
+  subgraph docker["Docker Compose · rede safra-net"]
+    java["confirmacao-java<br/>Spring Boot · Java 21<br/>porta interna SERVER_PORT"]
+    pg[("postgres<br/>PostgreSQL 17.11")]
+    vol[["volume safra-pgdata"]]
+  end
+  node -- "HTTP/JSON<br/>localhost:JAVA_PORT (futuro CT16)" --> java
+  node -- "SQL<br/>localhost:DB_PORT" --> pg
+  java -- "JDBC<br/>postgres:5432" --> pg
+  pg --- vol
+```
+
+- **Node roda na máquina**; Java e PostgreSQL rodam no Docker.
+- O **Node usa `localhost`** e as portas publicadas: `DB_HOST=localhost`, `DB_PORT` (5432) e, no futuro, `http://localhost:${JAVA_PORT}` para o Java.
+- O **Java usa `postgres`** como hostname: é o nome do serviço na rede interna `safra-net`, e a porta interna é sempre 5432.
+- **`localhost` dentro do contêiner Java é o próprio contêiner**, e não a máquina nem o PostgreSQL. Por isso o Compose fixa `DB_HOST=postgres` para o Java, independentemente do `.env`.
+- As portas são publicadas só em `127.0.0.1`, inacessíveis a outros computadores da rede. O frontend não faz parte deste Compose.
+
+| Serviço | Imagem | Porta na máquina | Healthcheck |
+|---|---|---|---|
+| `postgres` | `postgres:17.11-alpine3.24` (oficial) | `127.0.0.1:${DB_PORT:-5432}` | `pg_isready` |
+| `confirmacao-java` | `safra/confirmacao-java:0.1.0` (build local) | `127.0.0.1:${JAVA_PORT:-8080}` | readiness do Actuator |
+
+Volume nomeado `safra-pgdata` (dados do PostgreSQL), rede `safra-net` e política `restart: unless-stopped`.
+
+### Comandos
+
+Verificar o Docker:
+
+```bash
+docker version
+docker compose version
+```
+
+Criar o `.env` (ignorado pelo Git) a partir do exemplo e trocar `DB_USER`/`DB_PASSWORD` por valores próprios. O Compose cria o banco com eles na primeira inicialização do volume:
+
+```bash
+cp .env.example .env
+```
+
+Validar a configuração, construir e iniciar (o build executa os testes Java):
+
+```bash
+docker compose config --quiet
+docker compose build
+docker compose up -d
+```
+
+Estado, healthchecks e logs:
+
+```bash
+docker compose ps
+docker inspect --format "{{.State.Health.Status}}" safra-postgres-1 safra-confirmacao-java-1
+curl http://localhost:8080/actuator/health/liveness
+curl http://localhost:8080/actuator/health/readiness
+docker compose logs -f confirmacao-java
+docker compose logs postgres
+```
+
+Migrations e seed do Node (na máquina, usando o PostgreSQL do Docker), depois a API:
+
+```bash
+npm run db:check
+npm run db:migrate
+npm run db:seed
+npm start
+```
+
+Parar **sem apagar dados** (o volume `safra-pgdata` é mantido) e retomar:
+
+```bash
+docker compose stop
+docker compose start
+docker compose down
+```
+
+Reconstruir somente o serviço Java após alterar o código:
+
+```bash
+docker compose up -d --build confirmacao-java
+```
+
+Remover o ambiente **e apagar o banco** (irreversível, use somente de forma intencional):
+
+```bash
+docker compose down -v
+```
+
+Se o volume já existir, alterar `DB_USER`/`DB_PASSWORD` no `.env` não muda o usuário do banco: o PostgreSQL só usa essas variáveis ao inicializar um volume vazio.
+
+### Testes do serviço Java
+
+O `docker compose build` executa os testes que não dependem do banco (contexto, liveness, readiness indisponível, Actuator restrito e erros JSON). Para incluir os testes com o PostgreSQL do Compose, em execução, rode na raiz do backend (Git Bash):
+
+```bash
+set -a; . ./.env; set +a
+MSYS_NO_PATHCONV=1 docker run --rm --network safra-net \
+  -e SAFRA_TESTE_COM_BANCO=1 -e DB_HOST=postgres -e DB_PORT=5432 -e DB_NAME -e DB_USER -e DB_PASSWORD \
+  -v "$(pwd -W)/services/confirmacao-java:/src:ro" -v safra-m2-cache:/root/.m2 \
+  eclipse-temurin:21.0.13_9-jdk-alpine-3.24 sh -c 'cp -r /src /w && cd /w && sh mvnw -B test'
+```
+
+Em Linux/macOS, use `$(pwd)` no lugar de `$(pwd -W)` e omita `MSYS_NO_PATHCONV=1`.
 
 ## API e comunicação com o frontend
 
