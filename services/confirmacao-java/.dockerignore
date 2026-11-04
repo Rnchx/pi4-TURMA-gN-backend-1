@@ -1,0 +1,7 @@
+target/
+.env*
+*.log
+.idea/
+.vscode/
+Dockerfile
+.dockerignore

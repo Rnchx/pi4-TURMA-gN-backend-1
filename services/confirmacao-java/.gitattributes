@@ -1,0 +1,3 @@
+# O wrapper é executado no Linux do contêiner: manter LF mesmo com core.autocrlf no Windows.
+mvnw text eol=lf
+*.cmd text eol=crlf
