@@ -165,17 +165,38 @@ As escritas exigem campos completos, texto não vazio e limites de tamanho, pre�
 
 Os aliases `/products` e `/categorys` (formato `name/price/photo/idcategory`) foram removidos depois que o frontend passou a usar somente as rotas oficiais. Chamadas a eles retornam 404 `rotaNaoEncontrada`. O arquivo histórico `create-tables.sql` também foi removido; a importação de bancos antigos (`categorys`/`products`) continua na migration 001.
 
+### Carrinho e compra demonstrativa (CT8–CT15)
+
+| Método e rota | Contrato | Resposta |
+|---|---|---|
+| POST /carrinhos/itens | CT8 | `carrinhoId`, `mensagem`, `item` (quantidade acumulada, preço, subtotal) e `total`. Sem `carrinhoId`, cria carrinho de visitante. |
+| GET /carrinhos/:carrinhoId | CT11 | `status`, `itens` (nome, quantidade, precoUnitario, subtotal), `total`, `carrinhoVazio`. |
+| PATCH /carrinhos/:carrinhoId/itens/:produtoId | CT12 | Nova quantidade (1 a 99), subtotal e total recalculados. |
+| DELETE /carrinhos/:carrinhoId/itens/:produtoId | CT13 | `removido`, itens restantes, `total`, `carrinhoVazio`. |
+| GET /carrinhos/:carrinhoId/resumo | CT14 | Mesmos itens e total de CT11 e `podeConfirmar`. |
+| POST /carrinhos/:carrinhoId/confirmacao-demonstrativa | CT15 | `compraId`, `confirmacaoId`, `status`, `itens`, `total`, `mensagem` e `criadaEm`; 201 na primeira confirmação, 200 ao repetir a mesma chave. |
+
+- Subtotais e totais são calculados em `NUMERIC` pelo PostgreSQL (fluxo E7: 2 × 5,50 + 1 × 3,00 = 14,00). O preço fica gravado no item ao ser adicionado (CT10) e não muda se o catálogo mudar.
+- Produto repetido soma a quantidade na mesma linha. Quantidades acima de 99 são recusadas sem alterar o carrinho. Toda alteração trava o carrinho, evitando perda de unidades em requisições simultâneas.
+- A confirmação relê o carrinho travado, recusa carrinho vazio ou com produto indisponível (409) e envia ao Serviço de Confirmação (CT16) os mesmos valores do resumo; só então o carrinho passa a `confirmado`. Carrinho confirmado não aceita alterações (409 `carrinhoFechado`).
+- O aplicativo gera a `chaveIdempotencia` e a reutiliza nas novas tentativas. Repetir a mesma chave devolve a compra original, sem duplicá-la. Java indisponível ou acima de 5 s: 503 `confirmacaoIndisponivel`, com o carrinho ainda aberto.
+- **Diferença registrada em relação a CT15:** o contrato prevê 409 para carrinho já confirmado. Uma nova tentativa para um carrinho confirmado, com os mesmos dados, devolve a confirmação original (regra de CT17), em vez de 409. Assim, uma resposta perdida na rede pode ser repetida sem gerar outra compra. Dados diferentes continuam recusados com 409.
+
 ### Testes
 
 `npm test` executa testes HTTP com Supertest e **PostgreSQL real temporário**, instalado como dependência de desenvolvimento. Não utiliza o DB_* do ambiente, não exige banco externo e não modifica bases existentes. O cluster usa porta livre, autenticação SCRAM, senha aleatória e bind em 127.0.0.1; seus arquivos são removidos após os testes. Instale dependências opcionais e permita o postinstall do pacote de binários `@embedded-postgres/<plataforma>`, caso o gerenciador solicite. Em Linux, rode como usuário sem privilégios de root; o teste não cria usuários do sistema. `npm ci --omit=dev` instala apenas as dependências necessárias ao servidor.
 
-A suíte cobre CT1/CT3/CT6/CT7, remoção das rotas legadas, filtros, criação/atualização, entradas inválidas, conflitos, registros inativos, migration do legado, repetição da carga, CORS, saúde, inicialização sem banco e desligamento/recuperação real do PostgreSQL. O teste visual integrado depende do frontend Expo em execução e é documentado no relatório do ciclo.
+A suíte cobre CT1/CT3/CT6/CT7, carrinho CT8–CT14 (cenário E7, produto repetido, limites de quantidade, concorrência, preço persistido, carrinho fechado), confirmação CT15 com Serviço de Confirmação simulado (idempotência, tentativas simultâneas, indisponibilidade e tempo limite), remoção das rotas legadas, filtros, criação/atualização, entradas inválidas, conflitos, registros inativos, migration do legado, repetição da carga, CORS, saúde, inicialização sem banco e desligamento/recuperação real do PostgreSQL. O teste visual integrado depende do frontend Expo em execução e é documentado no relatório do ciclo.
 
 ## Serviço Java com Spring Boot e Docker
 
-O Serviço de Confirmação ([`services/confirmacao-java`](services/confirmacao-java)) é independente do backend Node.js (ADR 0004), executa em contêiner Docker (ADR 0005) e se comunica com o Node por HTTP/REST com JSON. Ele será responsável por CT16 (gerar a confirmação demonstrativa) e por CT17/CT18 (persistir a compra e seus itens).
+O Serviço de Confirmação ([`services/confirmacao-java`](services/confirmacao-java)) é independente do backend Node.js (ADR 0004), executa em contêiner Docker (ADR 0005) e se comunica com o Node por HTTP/REST com JSON. Ele implementa CT16 (`POST /confirmacoes-demonstrativas`) e grava CT17 (`compras_demonstrativas`) e CT18 (`itens_compra`) em uma única transação.
 
-Neste ciclo existe somente a fundação: inicialização, conexão controlada com o PostgreSQL, saúde (liveness/readiness), erros JSON padronizados e testes. **CT16 ainda não está implementado**: CT17 exige chave estrangeira para `carrinhos.id` (CT9), e o carrinho persistido (CT8–CT15) ainda não existe. Nenhuma rota de confirmação é exposta até lá.
+- Valida referência, carrinho, quantidades (1 a 99), preços e subtotais em `BigDecimal`, sem arredondamento implícito.
+- Gera o identificador `SAFRA-DEMO-XXXXXXXX` e responde 201 para uma nova compra.
+- Mesma referência, ou mesmo carrinho, com os mesmos dados: devolve a compra original (200). Dados diferentes: 409 `idempotenciaConflitante`. Requisições simultâneas são resolvidas pelas restrições `UNIQUE`.
+- Erros: 400 `entradaInvalida`, 409 `idempotenciaConflitante`, 500 `erroInterno`, 503 `bancoIndisponivel`, com as mensagens do contrato.
+- As tabelas são criadas pela migration 002 da API, que mantém o único histórico de esquema do projeto.
 
 | Item | Valor |
 |---|---|
@@ -203,36 +224,36 @@ O Actuator expõe somente `health`, sem detalhes (URL JDBC, versões ou credenci
 | Host e porta por argumento | Variáveis de ambiente (`DB_HOST`, `DB_PORT`, `SERVER_PORT`, `JAVA_PORT`) |
 | Sockets e objetos serializados | HTTP/REST com JSON |
 | Threads manuais por cliente | Pool de threads do Tomcat gerenciado pelo Spring Boot |
-| Tratamento de indisponibilidade | Readiness 503 com banco fora; Node deverá tratar o Java fora do ar (CT16) |
+| Tratamento de indisponibilidade | Readiness 503 com banco fora; a API responde 503 `confirmacaoIndisponivel` com o Java fora do ar |
 | Desligamento manual | `docker compose stop` envia SIGTERM e o encerramento é gracioso |
 
-## Ambiente Docker: PostgreSQL e serviço Java
+## Ambiente Docker: PostgreSQL, API e serviço Java
 
 ```mermaid
 flowchart LR
-  subgraph host["Máquina (host)"]
-    node["API SAFRA<br/>Node.js + Express<br/>npm start / db:*"]
-  end
+  app["Aplicativo Expo<br/>(navegador ou celular)"]
   subgraph docker["Docker Compose · rede safra-net"]
-    java["confirmacao-java<br/>Spring Boot · Java 21<br/>porta interna SERVER_PORT"]
+    api["api<br/>Node.js + Express<br/>porta 4000"]
+    java["confirmacao-java<br/>Spring Boot · Java 21"]
     pg[("postgres<br/>PostgreSQL 17.11")]
     vol[["volume safra-pgdata"]]
   end
-  node -- "HTTP/JSON<br/>localhost:JAVA_PORT (futuro CT16)" --> java
-  node -- "SQL<br/>localhost:DB_PORT" --> pg
+  app -- "HTTP/JSON<br/>EXPO_PUBLIC_API_URL" --> api
+  api -- "HTTP/JSON CT16<br/>confirmacao-java:8080" --> java
+  api -- "SQL<br/>postgres:5432" --> pg
   java -- "JDBC<br/>postgres:5432" --> pg
   pg --- vol
 ```
 
-- **Node roda na máquina**; Java e PostgreSQL rodam no Docker.
-- O **Node usa `localhost`** e as portas publicadas: `DB_HOST=localhost`, `DB_PORT` (5432) e, no futuro, `http://localhost:${JAVA_PORT}` para o Java.
-- O **Java usa `postgres`** como hostname: é o nome do serviço na rede interna `safra-net`, e a porta interna é sempre 5432.
-- **`localhost` dentro do contêiner Java é o próprio contêiner**, e não a máquina nem o PostgreSQL. Por isso o Compose fixa `DB_HOST=postgres` para o Java, independentemente do `.env`.
-- As portas são publicadas só em `127.0.0.1`, inacessíveis a outros computadores da rede. O frontend não faz parte deste Compose.
+- `docker compose up -d` sobe **PostgreSQL, API SAFRA e Serviço de Confirmação**. A API aplica as migrations ao iniciar; elas são idempotentes e não apagam dados. O seed continua explícito.
+- **Dentro da rede `safra-net`**, os serviços se acessam pelo nome: a API usa `postgres:5432` e `http://confirmacao-java:8080`. `localhost` dentro de um contêiner é o próprio contêiner.
+- **Na máquina**, as portas são publicadas em `127.0.0.1`. Para testar pelo celular (Expo Go) na mesma rede, defina `API_BIND_ADDRESS=0.0.0.0` no `.env` e use o IP do computador em `EXPO_PUBLIC_API_URL`. Não versione esse IP.
+- Também é possível rodar a API na máquina (`npm start`, com `DB_HOST=localhost` e `CONFIRMACAO_URL=http://localhost:8080`); nesse caso, suba só `postgres` e `confirmacao-java` para não disputar a porta 4000.
 
 | Serviço | Imagem | Porta na máquina | Healthcheck |
 |---|---|---|---|
 | `postgres` | `postgres:17.11-alpine3.24` (oficial) | `127.0.0.1:${DB_PORT:-5432}` | `pg_isready` |
+| `api` | `safra/api:0.2.0` (build local, `node:24.19.0-alpine3.24`, usuário `node`) | `${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}` | `/health/ready` |
 | `confirmacao-java` | `safra/confirmacao-java:0.1.0` (build local) | `127.0.0.1:${JAVA_PORT:-8080}` | readiness do Actuator |
 
 Volume nomeado `safra-pgdata` (dados do PostgreSQL), rede `safra-net` e política `restart: unless-stopped`.
@@ -264,20 +285,23 @@ Estado, healthchecks e logs:
 
 ```bash
 docker compose ps
-docker inspect --format "{{.State.Health.Status}}" safra-postgres-1 safra-confirmacao-java-1
-curl http://localhost:8080/actuator/health/liveness
+docker inspect --format "{{.State.Health.Status}}" safra-postgres-1 safra-api-1 safra-confirmacao-java-1
+curl http://localhost:4000/health
 curl http://localhost:8080/actuator/health/readiness
-docker compose logs -f confirmacao-java
-docker compose logs postgres
+docker compose logs -f api
+docker compose logs confirmacao-java
 ```
 
-Migrations e seed do Node (na máquina, usando o PostgreSQL do Docker), depois a API:
+Carga demonstrativa (58 produtos, repetível, sem duplicar):
 
 ```bash
-npm run db:check
-npm run db:migrate
-npm run db:seed
-npm start
+docker compose exec api node src/database/cli.js seed
+```
+
+Reconstruir a API após alterar o código:
+
+```bash
+docker compose up -d --build api
 ```
 
 Parar **sem apagar dados** (o volume `safra-pgdata` é mantido) e retomar:
