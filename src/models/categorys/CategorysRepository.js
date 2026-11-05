@@ -14,10 +14,6 @@ export default class CategorysRepository {
     return this.db.oneOrNone('SELECT * FROM categorias WHERE id = $1 AND ativo', [id]);
   }
 
-  getCategoryByName(nome) {
-    return this.db.oneOrNone('SELECT * FROM categorias WHERE nome = $1 AND ativo', [nome]);
-  }
-
   getSubcategoryById(id) {
     return this.db.oneOrNone('SELECT * FROM subcategorias WHERE id = $1 AND ativo', [id]);
   }

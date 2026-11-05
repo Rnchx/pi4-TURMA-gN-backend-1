@@ -7,11 +7,5 @@ export function createRouter(catalog) {
   router.get('/', (req, res) => res.json({ mensagem: 'API SAFRA Online.' }));
   router.use('/produtos', productsRouter(catalog));
   router.use('/categorias', categoriesRouter(catalog));
-  const alias = (req, res, next) => {
-    res.set('Deprecation', 'true');
-    next();
-  };
-  router.use('/products', alias, productsRouter(catalog, true));
-  router.use('/categorys', alias, categoriesRouter(catalog, true));
   return router;
 }

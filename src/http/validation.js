@@ -27,37 +27,29 @@ function allowed(body, fields) {
   }
 }
 
-export function categoryBody(body, legacy) {
-  allowed(body, legacy ? ['name'] : ['nome']);
-  return { nome: text(legacy ? body.name : body.nome, 150, 'o nome') };
+export function categoryBody(body) {
+  allowed(body, ['nome']);
+  return { nome: text(body.nome, 150, 'o nome') };
 }
 
-export function productBody(body, legacy) {
-  allowed(body, legacy
-    ? ['name', 'price', 'description', 'type', 'validity', 'photo', 'idcategory', 'idCategory']
-    : ['nome', 'preco', 'descricao', 'imagemUrl', 'categoriaId', 'subcategoriaId']);
-  const price = legacy ? body.price : body.preco;
-  if (!['number', 'string'].includes(typeof price) || !/^\d{1,8}(\.\d{1,2})?$/.test(String(price))) {
+export function productBody(body) {
+  allowed(body, ['nome', 'preco', 'descricao', 'imagemUrl', 'categoriaId', 'subcategoriaId']);
+  if (!['number', 'string'].includes(typeof body.preco) || !/^\d{1,8}(\.\d{1,2})?$/.test(String(body.preco))) {
     throw new ApiError(400, 'dadosInvalidos', 'Informe um preço não negativo com até duas casas decimais.');
   }
-  const image = text(legacy ? body.photo : body.imagemUrl, 2048, 'a URL da imagem');
+  const image = text(body.imagemUrl, 2048, 'a URL da imagem');
   let url;
   try { url = new URL(image); } catch { /* Mensagem pública abaixo. */ }
   if (!url || url.protocol !== 'https:' || url.username || url.password) {
     throw new ApiError(400, 'dadosInvalidos', 'Informe uma URL HTTPS de imagem sem credenciais.');
   }
-  if (legacy && body.idcategory !== undefined && body.idCategory !== undefined && body.idcategory !== body.idCategory) {
-    throw new ApiError(400, 'dadosInvalidos', 'Informe uma única categoria.');
-  }
   return {
-    nome: text(legacy ? body.name : body.nome, 255, 'o nome'),
-    preco: Number(price),
-    descricao: text(legacy ? body.description : body.descricao, 500, 'a descrição'),
+    nome: text(body.nome, 255, 'o nome'),
+    preco: Number(body.preco),
+    descricao: text(body.descricao, 500, 'a descrição'),
     imagemUrl: image,
-    categoriaId: positiveId(legacy ? body.idcategory ?? body.idCategory : body.categoriaId),
-    ...(legacy ? {
-      tipo: text(body.type, 100, 'o tipo'),
-      validade: text(body.validity, 50, 'a validade'),
-    } : { subcategoriaId: positiveId(body.subcategoriaId), validade: '' }),
+    categoriaId: positiveId(body.categoriaId),
+    subcategoriaId: positiveId(body.subcategoriaId),
+    validade: '',
   };
 }

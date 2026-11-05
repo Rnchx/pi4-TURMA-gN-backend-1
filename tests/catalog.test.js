@@ -103,31 +103,22 @@ test('CT7: produto inexistente e IDs inválidos têm códigos e mensagens oficia
   }
 });
 
-test('aliases das telas usam os mesmos registros das rotas oficiais', async () => {
-  const catalog = (await api.get('/produtos')).body;
-  const legacy = await api.get('/products').expect(200);
-  assert.equal(legacy.headers.deprecation, 'true');
-  assert.deepEqual(legacy.body.products.map(p => p.id), catalog.produtos.map(p => p.produtoId));
-  const categories = (await api.get('/categorys').expect(200)).body.categorys;
-  assert.ok(categories.some(c => c.name === 'Padaria'));
-  const products = (await api.get('/categorys/filter/Padaria').expect(200)).body.products;
-  assert.ok(products.length > 0);
-  assert.ok(products.every(p => p.idcategory === category.id));
-  assert.deepEqual((await api.get(`/products/idcategory/${category.id}`).expect(200)).body.product, products);
-  assert.equal((await api.get(`/categorys/${category.id}`).expect(200)).body.category.name, 'Padaria');
-  const detail = (await api.get(`/products/${sample.id}`).expect(200)).body.product;
-  assert.equal(detail.name, sample.nome);
-  assert.equal(detail.idcategory, sample.categoria_id);
+test('OP#1335: rotas legadas /products e /categorys foram removidas', async () => {
+  for (const path of ['/products', `/products/${sample.id}`, '/categorys', '/categorys/filter/Padaria',
+    `/products/idcategory/${category.id}`, '/products/type/paes', '/products/name/x', '/categorys/name/Padaria']) {
+    assert.deepEqual((await api.get(path).expect(404)).body,
+      { codigo: 'rotaNaoEncontrada', mensagem: 'Rota não encontrada.' }, path);
+  }
+  await api.post('/products').send({ name: 'x' }).expect(404);
 });
 
-test('filtro por tipo funciona nos dois formatos, com texto escapado e sem injeção SQL', async () => {
+test('filtro por tipo usa a subcategoria, com texto escapado e sem injeção SQL', async () => {
   const type = encodeURIComponent(subcategory.nome);
-  const official = (await api.get(`/produtos/tipo/${type}`).expect(200)).body.produtos;
-  const legacy = (await api.get(`/products/type/${type}`).expect(200)).body.product;
-  assert.ok(legacy.length);
-  assert.ok(legacy.every(p => p.type === subcategory.nome));
-  assert.deepEqual(official.map(p => p.produtoId), legacy.map(p => p.id));
-  assert.deepEqual((await api.get('/products/type/%27%20OR%201=1--').expect(200)).body.product, []);
+  const rows = (await api.get(`/produtos/tipo/${type}`).expect(200)).body.produtos;
+  const expected = await postgres.db.any('SELECT id FROM produtos WHERE subcategoria_id=$1 AND ativo ORDER BY id', [subcategory.id]);
+  assert.ok(rows.length);
+  assert.deepEqual(rows.map(p => p.produtoId), expected.map(r => r.id));
+  assert.deepEqual((await api.get('/produtos/tipo/%27%20OR%201=1--').expect(200)).body.produtos, []);
 });
 
 test('cria e atualiza produto oficial com persistência dos IDs e timestamp', async () => {
@@ -143,25 +134,11 @@ test('cria e atualiza produto oficial com persistência dos IDs e timestamp', as
   assert.ok(row.atualizado_em >= before.atualizado_em);
 });
 
-test('cria/atualiza produto legado, corrigindo idCategory/idcategory sem duplicar regra', async () => {
-  const body = { name: 'Produto legado teste', price: '7.90', description: 'Pacote', photo: 'https://example.com/test.png',
-    type: 'Tipo novo de teste', validity: 'Demonstrativo', idCategory: category.id };
-  const created = (await api.post('/products').send(body).expect(201)).body.product;
-  assert.equal(created.idcategory, category.id);
-  const updated = (await api.put(`/products/${created.id}`).send({ ...body, name: 'Legado atualizado' }).expect(200)).body.updatedProduct;
-  assert.equal(updated.name, 'Legado atualizado');
-  assert.equal((await api.get(`/produtos/${created.id}`)).body.nome, updated.name);
-  const count = await postgres.db.one('SELECT count(*) FROM subcategorias WHERE nome=$1 AND categoria_id=$2', [body.type, category.id]);
-  assert.equal(Number(count.count), 1);
-});
-
 test('criação/atualização de categoria escreve categorias, sem alterar produtos', async () => {
   const before = (await api.get(`/produtos/${sample.id}`)).body;
   const row = (await api.post('/categorias').send({ nome: 'Categoria teste' }).expect(201)).body;
   assert.ok(row.categoriaId > 0);
   assert.equal((await api.put(`/categorias/${row.categoriaId}`).send({ nome: 'Categoria renomeada' }).expect(200)).body.nome, 'Categoria renomeada');
-  const legacy = (await api.post('/categorys').send({ name: 'Categoria legado teste' }).expect(201)).body.category;
-  assert.equal((await api.put(`/categorys/${legacy.id}`).send({ name: 'Categoria legado atualizada' }).expect(200)).body.updatedCategory.name, 'Categoria legado atualizada');
   assert.deepEqual((await api.get(`/produtos/${sample.id}`)).body, before);
   await api.post('/categorias').send({ nome: 'Categoria renomeada' }).expect(409);
   await api.put('/categorias/2147483647').send({ nome: 'Não existe' }).expect(404);
@@ -182,7 +159,6 @@ test('validação rejeita campos ausentes, tipos incorretos, preço inválido e 
   for (const body of [{}, { nome: '  ' }, { nome: false }, [], { nome: 'a'.repeat(151) }]) {
     await api.post('/categorias').send(body).expect(400);
   }
-  await api.post('/products').send({ photo: 12 }).expect(400);
 });
 
 test('valida referências de categoria e subcategoria antes de gravar', async () => {
@@ -275,7 +251,8 @@ test('banco realmente desligado: HTTP vivo, readiness 503 e consultas 500 saniti
     const health = (await api.get('/health/ready').expect(503)).body;
     assert.equal(health.http, 'ok');
     assert.equal(health.banco, 'indisponivel');
-    for (const path of ['/produtos', '/categorias', `/produtos/${sample.id}`, '/products', '/categorys/filter/Padaria', `/products/idcategory/${category.id}`]) {
+    for (const path of ['/produtos', '/categorias', `/produtos/${sample.id}`, `/categorias/${category.id}/produtos`,
+      `/categorias/${category.id}/subcategorias/${subcategory.id}/produtos`]) {
       const { body } = await api.get(path).expect(500);
       assert.equal(body.codigo, 'erroInterno');
       assert.deepEqual(Object.keys(body).sort(), ['codigo', 'mensagem']);

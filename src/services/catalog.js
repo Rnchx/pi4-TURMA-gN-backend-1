@@ -33,16 +33,9 @@ export default class Catalog {
     return this.products.getProductByidCategory(id);
   }
 
-  async byCategoryName(name) {
-    const category = await this.categories.getCategoryByName(name);
-    if (!category) throw new ApiError(404, 'classificacaoNaoEncontrada', 'Categoria ou subcategoria não encontrada.');
-    return this.byCategory(category.id);
-  }
-
   async saveProduct(product, id) {
     if (id !== undefined) await this.product(id);
-    await this.category(product.categoriaId);
-    if (product.subcategoriaId !== undefined) await this.classification(product.categoriaId, product.subcategoriaId);
+    await this.classification(product.categoriaId, product.subcategoriaId);
     return id === undefined ? this.products.createProduct(product) : this.products.updateProduct(id, product);
   }
 }

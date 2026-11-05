@@ -130,7 +130,6 @@ No frontend, crie seu `.env` local a partir do exemplo e configure `EXPO_PUBLIC_
 - `db:check` verifica conexão. `db:migrate` aplica arquivos versionados em transação, com registro em `schema_migrations` e trava contra execução concorrente.
 - A primeira migration cria `categorias`, `subcategorias` e `produtos`, alinhadas a CT2/CT4/CT5. Se `categorys` e `products` legadas existirem, importa os registros preservando IDs e cria subcategorias a partir de `type`. As tabelas originais são preservadas como histórico, sem receber novas escritas da API. Faça backup antes de migrar um banco existente.
 - Duplicidade de categorias, referências inválidas ou dados incompatíveis com as restrições interrompem e revertem a migration; nenhum dado é apagado ou ajustado silenciosamente. Corrija os dados com revisão antes de tentar novamente.
-- `src/database/create-tables.sql` é o arquivo histórico original; não é executado pelo servidor ou pelo migrador. Não o utilize para inicializar novos bancos.
 - `db:seed` é explícito e repetível: 58 produtos, 5 categorias e seus tipos/subcategorias. Reutiliza dados/imagens do SQL original; os preços e a validade não têm finalidade comercial. Produtos demonstrativos têm chave fixa; repetir a carga atualiza esses registros sem duplicá-los, preservando IDs e cadastros manuais. As imagens HTTPS externas dependem dos respectivos hosts.
 - `npm start` abre HTTP e verifica a conexão, capturando a falha. Não migra nem popula o banco. Consultas possuem limite de tempo; a API volta a atender quando o PostgreSQL retorna.
 - SIGINT/SIGTERM encerram HTTP e o pool. `db:check`, `db:migrate` e `db:seed` retornam código 1 em caso de falha, sem imprimir credenciais ou consultas.
@@ -162,29 +161,15 @@ Readiness verifica conectividade; migrations precisam ser aplicadas separadament
 
 As escritas exigem campos completos, texto não vazio e limites de tamanho, preço não negativo com até duas casas e imagem HTTPS sem credenciais. IDs são inteiros positivos de 32 bits; categoria e subcategoria devem existir e ser compatíveis. Os campos de oferta aparecem nas leituras para compatibilidade com os contratos, sempre falsos na demonstração deste ciclo; gestão de ofertas não foi implementada. Listas vazias retornam 200 com array vazio. Erros JSON têm `codigo` e `mensagem`; validação retorna 400, ausência retorna 404, conflito retorna 409. Os cadastros não têm autenticação neste ciclo; não exponha esta API demonstrativa publicamente.
 
-### Aliases temporários para o frontend atual
+### Rotas legadas removidas (OP#1335)
 
-Não foi necessário alterar o frontend. Estes adaptadores usam os mesmos serviços e repositórios das rotas oficiais e enviam `Deprecation: true`:
-
-| Alias | Equivalente / formato legado |
-|---|---|
-| GET /products | /produtos; totalProducts e products. |
-| GET /products/:id | /produtos/:produtoId; product. |
-| GET /products/idcategory/:category | /categorias/:categoriaId/produtos; product como lista. Aceita também a grafia idCategory. |
-| GET /products/type/:type | /produtos/tipo/:tipo; product como lista. |
-| GET /categorys | /categorias; totalCategorys e categorys. |
-| GET /categorys/:id | /categorias/:categoriaId; category. |
-| GET /categorys/filter/:category | Resolve o nome da categoria e usa a mesma consulta por categoria; products. |
-| GET /products/name/:name; GET /categorys/name/:name | Busca exata por nome; product ou category (lista), respectivamente. |
-| POST/PUT/DELETE /products[/:id]; /categorys[/:id] | Mesmas operações de cadastro, atualização e remoção, com serialização legada. |
-
-Produtos legados usam `id, name, price, description, type, validity, photo, idcategory`. Na escrita também é aceito `idCategory`; valores conflitantes são rejeitados. O tipo é associado a uma subcategoria da categoria informada, criada em transação quando necessário. Categorias legadas usam `id, name`. Os aliases permanecem apenas até o frontend adotar os contratos oficiais; não são uma segunda API de regras de negócio.
+Os aliases `/products` e `/categorys` (formato `name/price/photo/idcategory`) foram removidos depois que o frontend passou a usar somente as rotas oficiais. Chamadas a eles retornam 404 `rotaNaoEncontrada`. O arquivo histórico `create-tables.sql` também foi removido; a importação de bancos antigos (`categorys`/`products`) continua na migration 001.
 
 ### Testes
 
 `npm test` executa testes HTTP com Supertest e **PostgreSQL real temporário**, instalado como dependência de desenvolvimento. Não utiliza o DB_* do ambiente, não exige banco externo e não modifica bases existentes. O cluster usa porta livre, autenticação SCRAM, senha aleatória e bind em 127.0.0.1; seus arquivos são removidos após os testes. Instale dependências opcionais e permita o postinstall do pacote de binários `@embedded-postgres/<plataforma>`, caso o gerenciador solicite. Em Linux, rode como usuário sem privilégios de root; o teste não cria usuários do sistema. `npm ci --omit=dev` instala apenas as dependências necessárias ao servidor.
 
-A suíte cobre CT1/CT3/CT6/CT7, aliases, filtros, criação/atualização, entradas inválidas, conflitos, registros inativos, migration do legado, repetição da carga, CORS, saúde, inicialização sem banco e desligamento/recuperação real do PostgreSQL. O teste visual integrado depende do frontend Expo em execução e é documentado no relatório do ciclo.
+A suíte cobre CT1/CT3/CT6/CT7, remoção das rotas legadas, filtros, criação/atualização, entradas inválidas, conflitos, registros inativos, migration do legado, repetição da carga, CORS, saúde, inicialização sem banco e desligamento/recuperação real do PostgreSQL. O teste visual integrado depende do frontend Expo em execução e é documentado no relatório do ciclo.
 
 ## Serviço Java com Spring Boot e Docker
 

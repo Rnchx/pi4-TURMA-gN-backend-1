@@ -14,10 +14,6 @@ export default class ProductsRepository {
     return this.db.oneOrNone(`${select} WHERE ${active} AND p.id = $1`, [id]);
   }
 
-  getProductByName(nome) {
-    return this.db.oneOrNone(`${select} WHERE ${active} AND p.nome = $1 ORDER BY p.id LIMIT 1`, [nome]);
-  }
-
   getProductByType(tipo) {
     return this.db.manyOrNone(`${select} WHERE ${active} AND s.nome = $1 ORDER BY p.id`, [tipo]);
   }
@@ -33,16 +29,8 @@ export default class ProductsRepository {
 
   async save(product, id) {
     return this.db.tx(async tx => {
-      let subcategoryId = product.subcategoriaId;
-      if (product.tipo) {
-        // A escrita legada usa o nome do tipo; há uma única subcategoria por categoria/nome.
-        const row = await tx.one(`INSERT INTO subcategorias(categoria_id, nome) VALUES($1, $2)
-          ON CONFLICT(categoria_id, nome) DO UPDATE SET nome = EXCLUDED.nome RETURNING id`,
-        [product.categoriaId, product.tipo]);
-        subcategoryId = row.id;
-      }
       const values = [product.nome, product.preco, product.descricao, product.imagemUrl,
-        product.categoriaId, subcategoryId, product.validade];
+        product.categoriaId, product.subcategoriaId, product.validade];
       const row = id === undefined
         ? await tx.one(`INSERT INTO produtos(nome, preco, descricao, imagem_url, categoria_id, subcategoria_id, validade)
             VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, values)
