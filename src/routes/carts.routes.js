@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { cartsController } from '../controllers/carts.controller.js';
 
-// CT8, CT11, CT12, CT13 e CT14.
+// CT8, CT11, CT12, CT13, CT14 e CT15.
 export default function cartsRouter(cart) {
   const router = Router();
   const ctrl = cartsController(cart);
@@ -10,5 +10,6 @@ export default function cartsRouter(cart) {
   router.patch('/:carrinhoId/itens/:produtoId', ctrl.updateQuantity);
   router.delete('/:carrinhoId/itens/:produtoId', ctrl.removeItem);
   router.get('/:carrinhoId/resumo', ctrl.summary);
+  router.post('/:carrinhoId/confirmacao-demonstrativa', ctrl.confirm);
   return router;
 }

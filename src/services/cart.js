@@ -13,10 +13,13 @@ const item = row => ({
 
 const closed = () => new ApiError(409, 'carrinhoFechado', 'O carrinho não pode ser alterado.');
 
+const DEMO_MESSAGE = 'Compra demonstrativa concluída. Nenhuma cobrança foi realizada.';
+
 export default class Cart {
-  constructor(db, carts) {
+  constructor(db, carts, confirmar) {
     this.db = db;
     this.carts = carts;
+    this.confirmar = confirmar;
   }
 
   // CT8 adicionarItemAoCarrinho (OP#588): cria o carrinho de visitante quando necessário e
@@ -110,5 +113,42 @@ export default class Cart {
       total: money(await this.carts.total(this.db, carrinhoId)),
       podeConfirmar: cart.status === 'aberto' && rows.length > 0 && rows.every(row => row.disponivel),
     };
+  }
+
+  // CT15 confirmarCompraDemonstrativa (OP#600): relê e trava o carrinho, envia ao Serviço de Confirmação
+  // (CT16) os mesmos valores do resumo e marca o carrinho como confirmado (CT9) após a gravação da compra.
+  // O bloqueio FOR NO KEY UPDATE impede alterações no carrinho e é compatível com a chave estrangeira gravada
+  // pelo serviço Java. Uma nova tentativa com a mesma chave devolve a compra original, sem duplicá-la.
+  confirm({ carrinhoId, chaveIdempotencia }) {
+    return this.db.tx(async t => {
+      const cart = await this.carts.lock(t, carrinhoId);
+      if (!cart) throw new ApiError(404, 'carrinhoNaoEncontrado', 'Carrinho não encontrado.');
+      const rows = await this.carts.items(t, carrinhoId);
+      if (!rows.length || rows.some(row => !row.disponivel)) {
+        throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode ser confirmado.');
+      }
+      const itens = rows.map(item);
+      const total = money(await this.carts.total(t, carrinhoId));
+      const compra = await this.confirmar({
+        referencia: chaveIdempotencia,
+        carrinhoId,
+        quantidadeItens: itens.reduce((sum, row) => sum + row.quantidade, 0),
+        total,
+        itens,
+      });
+      await this.carts.confirm(t, carrinhoId);
+      return {
+        criada: compra.criada,
+        body: {
+          compraId: compra.compraId,
+          confirmacaoId: compra.confirmacaoId,
+          status: 'concluida_demonstrativa',
+          itens,
+          total,
+          mensagem: DEMO_MESSAGE,
+          criadaEm: compra.geradaEm,
+        },
+      };
+    });
   }
 }
