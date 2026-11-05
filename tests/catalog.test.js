@@ -199,7 +199,7 @@ test('migrate e seed repetíveis: IDs preservados, sem duplicação ou perda de 
   await seed(postgres.db);
   assert.deepEqual(await postgres.db.any('SELECT id, demo_chave FROM produtos ORDER BY id'), before);
   assert.deepEqual(await postgres.db.any('SELECT id, nome FROM categorias ORDER BY id'), categoriesBefore);
-  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 1);
+  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 2);
 });
 
 test('migração importa banco legado sem apagar originais nem perder chaves', async () => {
