@@ -104,7 +104,7 @@ A visão geral e os fluxos ficam em [docs/fluxos do frontend](https://github.com
 
 ## Execução do catálogo — Ciclo 2
 
-Requer **Node.js 22 ou superior** e **PostgreSQL 14 ou superior**. O PostgreSQL pode ser o do Docker Compose (veja [Ambiente Docker](#ambiente-docker-postgresql-e-serviço-java)) ou uma instalação local. Não é necessária chave OpenAI. A implementação atual atende catálogo, classificação e detalhes (E1–E3); as demais funcionalidades acima continuam previstas.
+Requer **Node.js 22 ou superior** e **PostgreSQL 14 ou superior**. O PostgreSQL pode ser o do Docker Compose (veja [Ambiente Docker](#ambiente-docker-postgresql-api-e-serviço-java)) ou uma instalação local. Não é necessária chave OpenAI. A implementação atual atende catálogo, classificação, detalhes, carrinho, resumo e confirmação demonstrativa (E1–E10); assistente de IA e ofertas (E11–E12) continuam previstos.
 
 1. Instale com `npm ci`.
 2. Copie `.env.example` para `.env` e configure o banco: o do Docker Compose (criado com as credenciais do próprio `.env`) ou um banco **já criado**, com um usuário autorizado a criar tabelas. Nenhuma credencial real acompanha o repositório.
