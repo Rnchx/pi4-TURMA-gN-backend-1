@@ -180,7 +180,7 @@ Os aliases `/products` e `/categorys` (formato `name/price/photo/idcategory`) fo
 - Produto repetido soma a quantidade na mesma linha. Quantidades acima de 99 são recusadas sem alterar o carrinho. Toda alteração trava o carrinho, evitando perda de unidades em requisições simultâneas.
 - A confirmação relê o carrinho travado, recusa carrinho vazio ou com produto indisponível (409) e envia ao Serviço de Confirmação (CT16) os mesmos valores do resumo; só então o carrinho passa a `confirmado`. Carrinho confirmado não aceita alterações (409 `carrinhoFechado`).
 - O aplicativo gera a `chaveIdempotencia` e a reutiliza nas novas tentativas. Repetir a mesma chave devolve a compra original, sem duplicá-la. Java indisponível ou acima de 5 s: 503 `confirmacaoIndisponivel`, com o carrinho ainda aberto.
-- **Diferença registrada em relação a CT15:** o contrato prevê 409 para carrinho já confirmado. Uma nova tentativa para um carrinho confirmado, com os mesmos dados, devolve a confirmação original (regra de CT17), em vez de 409. Assim, uma resposta perdida na rede pode ser repetida sem gerar outra compra. Dados diferentes continuam recusados com 409.
+- **Idempotência (CT15, CT16 e CT17):** reenviar a mesma `chaveIdempotencia` para o mesmo carrinho devolve a compra original com 200, mesmo depois de o carrinho estar confirmado. Assim, uma resposta perdida na rede pode ser repetida sem gerar outra compra. Carrinho já confirmado com **outra** chave, ou chave reaproveitada com dados diferentes, recebe 409 `confirmacaoNaoPermitida`, e nenhuma compra nova é criada.
 
 ### Testes
 
@@ -194,7 +194,7 @@ O Serviço de Confirmação ([`services/confirmacao-java`](services/confirmacao-
 
 - Valida referência, carrinho, quantidades (1 a 99), preços e subtotais em `BigDecimal`, sem arredondamento implícito.
 - Gera o identificador `SAFRA-DEMO-XXXXXXXX` e responde 201 para uma nova compra.
-- Mesma referência, ou mesmo carrinho, com os mesmos dados: devolve a compra original (200). Dados diferentes: 409 `idempotenciaConflitante`. Requisições simultâneas são resolvidas pelas restrições `UNIQUE`.
+- Mesma referência com o mesmo carrinho e os mesmos dados: devolve a compra original (200). Referência reaproveitada com dados diferentes, ou carrinho já confirmado com outra referência: 409 `idempotenciaConflitante`. Requisições simultâneas são resolvidas pelas restrições `UNIQUE`.
 - Erros: 400 `entradaInvalida`, 409 `idempotenciaConflitante`, 500 `erroInterno`, 503 `bancoIndisponivel`, com as mensagens do contrato.
 - As tabelas são criadas pela migration 002 da API, que mantém o único histórico de esquema do projeto.
 

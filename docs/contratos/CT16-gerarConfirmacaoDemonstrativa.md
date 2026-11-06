@@ -34,6 +34,6 @@
 | Código | Quando acontece | Resposta à API SAFRA |
 | --- | --- | --- |
 | 400 | Referência, carrinho, itens, quantidade ou total inválido. | `{"codigo":"entradaInvalida","mensagem":"Dados da confirmação inválidos."}` |
-| 409 | Referência já usada com dados diferentes. | `{"codigo":"idempotenciaConflitante","mensagem":"A referência já foi utilizada."}` |
+| 409 | Referência já usada com dados diferentes, ou carrinho já confirmado com outra referência. | `{"codigo":"idempotenciaConflitante","mensagem":"A referência já foi utilizada."}` |
 | 500 | Falha interna do serviço Java. | `{"codigo":"erroInterno","mensagem":"A confirmação não pôde ser gerada."}` |
 | 503 | Banco SAFRA indisponível durante a transação. | `{"codigo":"bancoIndisponivel","mensagem":"A confirmação não pôde ser persistida."}` |
