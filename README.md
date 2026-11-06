@@ -247,7 +247,12 @@ flowchart LR
 
 - `docker compose up -d` sobe **PostgreSQL, API SAFRA e Serviço de Confirmação**. A API aplica as migrations ao iniciar; elas são idempotentes e não apagam dados. O seed continua explícito.
 - **Dentro da rede `safra-net`**, os serviços se acessam pelo nome: a API usa `postgres:5432` e `http://confirmacao-java:8080`. `localhost` dentro de um contêiner é o próprio contêiner.
-- **Na máquina**, as portas são publicadas em `127.0.0.1`. Para testar pelo celular (Expo Go) na mesma rede, defina `API_BIND_ADDRESS=0.0.0.0` no `.env` e use o IP do computador em `EXPO_PUBLIC_API_URL`. Não versione esse IP.
+- **Na máquina**, as portas são publicadas em `127.0.0.1` (padrão e uso seguro): só este computador acessa a API, o banco e o serviço Java.
+- **Aparelho físico (Expo Go):** só durante o teste, publique a API na rede local. PostgreSQL e Java continuam em `127.0.0.1`.
+  1. No `.env` do backend (não versionado), defina `API_BIND_ADDRESS=0.0.0.0` e recrie só a API: `docker compose up -d --no-deps api`.
+  2. Confira pelo navegador do celular, na mesma rede Wi-Fi: `http://<IP-do-computador>:4000/health/ready`.
+  3. No `.env.local` do frontend (não versionado), aponte para o IP do computador. Por exemplo: `EXPO_PUBLIC_API_URL=http://192.168.0.64:4000`.
+  4. Depois do teste, volte para `API_BIND_ADDRESS=127.0.0.1` e recrie a API. Ela não tem autenticação: não deixe exposta em redes públicas.
 - Também é possível rodar a API na máquina (`npm start`, com `DB_HOST=localhost` e `CONFIRMACAO_URL=http://localhost:8080`); nesse caso, suba só `postgres` e `confirmacao-java` para não disputar a porta 4000.
 
 | Serviço | Imagem | Porta na máquina | Healthcheck |
