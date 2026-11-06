@@ -19,9 +19,16 @@ export function readConfig(env = process.env) {
       throw new Error('CORS_ORIGINS deve conter origens HTTP/HTTPS exatas, sem curingas.');
     }
   }
+  const confirmacaoUrl = (env.CONFIRMACAO_URL || 'http://localhost:8080').replace(/\/+$/, '');
+  let parsed;
+  try { parsed = new URL(confirmacaoUrl); } catch { /* Mensagem pública abaixo. */ }
+  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error('Configuração inválida: CONFIRMACAO_URL.');
+  }
   return {
     port: port(env.PORT, 4000, 'PORT'),
     origins,
+    confirmacaoUrl,
     database: {
       host: env.DB_HOST || 'localhost',
       port: port(env.DB_PORT, 5432, 'DB_PORT'),

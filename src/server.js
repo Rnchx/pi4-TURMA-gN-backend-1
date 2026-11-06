@@ -5,7 +5,7 @@ import { createApp } from './app.js';
 
 export async function startServer(config = readConfig()) {
   const database = createDatabase(config.database);
-  const app = createApp({ db: database.db, origins: config.origins });
+  const app = createApp({ db: database.db, origins: config.origins, confirmacaoUrl: config.confirmacaoUrl });
   let server;
   try {
     server = await new Promise((resolve, reject) => {

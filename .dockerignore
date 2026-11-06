@@ -1,0 +1,14 @@
+node_modules/
+.env*
+!.env.example
+.git/
+.test-data/
+coverage/
+*.log
+services/
+tests/
+docs/
+assets/
+Dockerfile
+.dockerignore
+compose.yaml

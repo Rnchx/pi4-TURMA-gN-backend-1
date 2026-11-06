@@ -10,7 +10,7 @@
 | Campo | Tipo | Obrigatório | Exemplo | Regra |
 | --- | --- | --- | --- | --- |
 | carrinhoId | texto | sim | `0c9d92c6-6939-4a33-9132-2dd75fe512ad` | UUID em parâmetro de rota. |
-| chaveIdempotencia | texto | sim | `confirmacao-9f3819dd-8e95-4fd5-a735-6ca8b80de8ad` | Única por tentativa lógica. |
+| chaveIdempotencia | texto | sim | `confirmacao-9f3819dd-8e95-4fd5-a735-6ca8b80de8ad` | Única por tentativa lógica. Reenviar a mesma chave para o mesmo carrinho devolve a compra original (200), sem criar outra; a primeira confirmação responde 201. |
 
 ## Saída
 
@@ -30,6 +30,6 @@
 | --- | --- | --- |
 | 400 | UUID ou chave inválida. | `{"codigo":"entradaInvalida","mensagem":"Revise os dados da confirmação."}` |
 | 404 | Carrinho não existe. | `{"codigo":"carrinhoNaoEncontrado","mensagem":"Carrinho não encontrado."}` |
-| 409 | Carrinho vazio, fechado ou chave reaproveitada com dados diferentes. | `{"codigo":"confirmacaoNaoPermitida","mensagem":"O carrinho não pode ser confirmado."}` |
+| 409 | Carrinho vazio, fechado por outra confirmação ou chave reaproveitada com dados diferentes. | `{"codigo":"confirmacaoNaoPermitida","mensagem":"O carrinho não pode ser confirmado."}` |
 | 503 | Serviço de Confirmação indisponível. | `{"codigo":"confirmacaoIndisponivel","mensagem":"Tente novamente mais tarde."}` |
 | 500 | Falha ao registrar. | `{"codigo":"erroInterno","mensagem":"Não foi possível concluir a compra demonstrativa."}` |

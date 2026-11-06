@@ -54,7 +54,7 @@ class SaudeSemBancoTest {
 
     @Test
     void rotaInexistenteRetornaErroJsonPadronizado() throws Exception {
-        HttpResponse<String> resposta = Http.get(porta, "/confirmacoes-demonstrativas");
+        HttpResponse<String> resposta = Http.get(porta, "/rota-inexistente");
         assertThat(resposta.statusCode()).isEqualTo(404);
         assertThat(resposta.headers().firstValue("Content-Type")).hasValueSatisfying(
                 tipo -> assertThat(tipo).startsWith("application/json"));
