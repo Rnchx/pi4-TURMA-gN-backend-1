@@ -84,10 +84,11 @@ class ConfirmacaoComBancoTest {
         assertThat(repetida.statusCode()).isEqualTo(200);
         assertThat(campo(repetida.body(), "compraId")).isEqualTo(compraId);
 
-        // Nova referência para o mesmo carrinho com os mesmos dados: ainda a compra original (CT17).
+        // Nova referência para o mesmo carrinho já confirmado: a chave gravada é diferente, então é conflito
+        // (CT17), e a API responde 409 "carrinho fechado" (CT15). Nenhuma compra nova é criada.
         HttpResponse<String> outraChave = Http.post(porta, "/confirmacoes-demonstrativas", pedido("confirmacao-" + UUID.randomUUID(), 2, "14.00"));
-        assertThat(outraChave.statusCode()).isEqualTo(200);
-        assertThat(campo(outraChave.body(), "compraId")).isEqualTo(compraId);
+        assertThat(outraChave.statusCode()).isEqualTo(409);
+        assertThat(outraChave.body()).isEqualTo("{\"codigo\":\"idempotenciaConflitante\",\"mensagem\":\"A referência já foi utilizada.\"}");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM compras_demonstrativas WHERE carrinho_id = ?", Integer.class, carrinho)).isEqualTo(1);
     }
 

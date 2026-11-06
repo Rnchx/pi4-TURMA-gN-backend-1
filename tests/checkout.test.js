@@ -47,14 +47,17 @@ after(async () => {
 const compras = new Map();
 beforeEach(() => {
   calls = [];
-  // Comportamento padrão: idempotente por referência, como o serviço real.
+  // Comportamento padrão, como o serviço real (CT16/CT17): mesma referência e mesmo carrinho devolvem a
+  // compra original; carrinho já confirmado com outra referência, ou referência de outro carrinho, é conflito.
   respond = body => {
+    const conflict = [409, { codigo: 'idempotenciaConflitante', mensagem: 'A referência já foi utilizada.' }];
     const existing = compras.get(body.referencia);
-    if (existing) return [200, existing];
+    if (existing) return existing.carrinhoId === body.carrinhoId ? [200, existing.compra] : conflict;
+    if ([...compras.values()].some(c => c.carrinhoId === body.carrinhoId)) return conflict;
     const compraId = randomUUID();
     const created = { confirmacaoId: `SAFRA-DEMO-${compraId.slice(0, 8).toUpperCase()}`, compraId,
       mensagem: 'Compra demonstrativa concluída.', geradaEm: '2026-11-05T12:00:00Z' };
-    compras.set(body.referencia, created);
+    compras.set(body.referencia, { carrinhoId: body.carrinhoId, compra: created });
     return [201, created];
   };
 });
@@ -94,6 +97,16 @@ test('CT15: nova tentativa com a mesma chave devolve a mesma compra, sem duplica
   assert.equal(second.compraId, first.compraId);
   assert.equal(second.confirmacaoId, first.confirmacaoId);
   assert.deepEqual(second.itens, first.itens);
+});
+
+test('CT15: carrinho já confirmado com outra chave é recusado (409) sem criar outra compra', async () => {
+  const carrinhoId = await cartE7();
+  const first = await confirm(carrinhoId, `confirmacao-${randomUUID()}`, 201);
+  assert.deepEqual(await confirm(carrinhoId, `confirmacao-${randomUUID()}`, 409),
+    { codigo: 'confirmacaoNaoPermitida', mensagem: 'O carrinho não pode ser confirmado.' });
+  assert.equal([...compras.values()].filter(c => c.carrinhoId === carrinhoId).length, 1);
+  assert.equal((await api.get(`/carrinhos/${carrinhoId}`)).body.status, 'confirmado');
+  assert.ok(first.compraId);
 });
 
 test('CT15: tentativas simultâneas com a mesma chave resultam em uma única compra', async () => {

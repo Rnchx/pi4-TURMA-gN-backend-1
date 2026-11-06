@@ -60,16 +60,21 @@ public class ConfirmacaoService {
         }
     }
 
+    // CT17 (unique_violation): devolve a compra original somente quando os dados gravados são iguais,
+    // incluindo a chave de idempotência. Mesma referência com carrinho, itens ou total diferentes, ou o
+    // mesmo carrinho já confirmado com outra referência, é conflito (CT16 409; CT15 409 "carrinho fechado").
     private Optional<Resultado> existente(Validado dados) {
-        Optional<ComprasRepository.Compra> compra = compras.porChave(dados.referencia())
-                .or(() -> compras.porCarrinho(dados.carrinhoId()));
-        if (compra.isEmpty()) {
-            return Optional.empty();
+        Optional<ComprasRepository.Compra> porChave = compras.porChave(dados.referencia());
+        if (porChave.isPresent()) {
+            if (!mesmosDados(porChave.get(), dados)) {
+                throw ConfirmacaoException.idempotenciaConflitante();
+            }
+            return Optional.of(new Resultado(resposta(porChave.get()), false));
         }
-        if (!mesmosDados(compra.get(), dados)) {
+        if (compras.porCarrinho(dados.carrinhoId()).isPresent()) {
             throw ConfirmacaoException.idempotenciaConflitante();
         }
-        return Optional.of(new Resultado(resposta(compra.get()), false));
+        return Optional.empty();
     }
 
     private Resultado registrar(Validado dados) {
