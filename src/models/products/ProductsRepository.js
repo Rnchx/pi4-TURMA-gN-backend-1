@@ -10,6 +10,12 @@ export default class ProductsRepository {
     return this.db.manyOrNone(`${select} WHERE ${active} ORDER BY p.id`);
   }
 
+  // CT22: ofertas demonstrativas ativas (em_oferta verdadeiro), da maior para a menor economia.
+  getOffers() {
+    return this.db.manyOrNone(`${select} WHERE ${active} AND p.em_oferta
+      ORDER BY (p.preco_anterior - p.preco) DESC, p.id`);
+  }
+
   getProductById(id) {
     return this.db.oneOrNone(`${select} WHERE ${active} AND p.id = $1`, [id]);
   }
