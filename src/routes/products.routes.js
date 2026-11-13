@@ -6,6 +6,8 @@ export default function productsRouter(catalog) {
   const ctrl = productsController(catalog);
   router.get('/', ctrl.list);
   router.get('/tipo/:type', ctrl.byType);
+  // Antes de /:id, para "ofertas" não ser lido como identificador.
+  router.get('/ofertas', ctrl.offers);
   router.get('/:id', ctrl.detail);
   router.post('/', ctrl.create);
   router.put('/:id', ctrl.update);
