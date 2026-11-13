@@ -320,3 +320,33 @@ test('servidor inicia com banco desligado, mantém HTTP vivo e trata a rejeiçã
     await exited;
   }
 });
+
+test('CT22 (OP#610): ofertas ativas com preço anterior maior, aviso fixo e ordem por economia', async () => {
+  const { body } = await api.get('/produtos/ofertas').expect(200);
+  assert.equal(body.aviso, 'Ofertas demonstrativas; preços sem atualização em tempo real.');
+  assert.ok(body.ofertas.length >= 3);
+  const economia = body.ofertas.map(o => Math.round((o.precoAnterior - o.preco) * 100));
+  assert.deepEqual(economia, [...economia].sort((a, b) => b - a));
+  for (const oferta of body.ofertas) {
+    assert.deepEqual(Object.keys(oferta).sort(), ['emOferta', 'imagemUrl', 'nome', 'precoAnterior', 'preco', 'produtoId'].sort());
+    assert.equal(oferta.emOferta, true);
+    assert.ok(oferta.precoAnterior > oferta.preco);
+  }
+  const catalogo = (await api.get('/produtos').expect(200)).body.produtos.filter(p => p.emOferta);
+  assert.deepEqual(body.ofertas.map(o => o.produtoId).sort((a, b) => a - b), catalogo.map(p => p.produtoId).sort((a, b) => a - b));
+});
+
+test('CT22: produto em oferta desativado sai da lista; lista vazia responde 200', async () => {
+  const before = (await api.get('/produtos/ofertas').expect(200)).body.ofertas;
+  await api.delete(`/produtos/${before[0].produtoId}`).expect(204);
+  const after = (await api.get('/produtos/ofertas').expect(200)).body.ofertas;
+  assert.ok(!after.some(o => o.produtoId === before[0].produtoId));
+  assert.equal(after.length, before.length - 1);
+  await postgres.db.none('UPDATE produtos SET ativo = true WHERE id = $1', [before[0].produtoId]);
+  await postgres.db.tx(async tx => {
+    await tx.none('UPDATE produtos SET em_oferta = false, preco_anterior = NULL');
+    const res = await request(createApp({ db: tx, origins: [] })).get('/produtos/ofertas').expect(200);
+    assert.deepEqual(res.body.ofertas, []);
+    throw new Error('rollback');
+  }).catch(error => { if (error.message !== 'rollback') throw error; });
+});
