@@ -45,8 +45,9 @@ test('CT1: catálogo tem ao menos 20 produtos ativos, preços numéricos e image
     assert.ok(row.imagemUrl.startsWith('https://'));
     assert.equal(typeof row.preco, 'number');
     assert.ok(row.preco >= 0);
-    assert.equal(row.emOferta, false);
-    assert.equal(row.precoAnterior, undefined);
+    assert.equal(typeof row.emOferta, 'boolean');
+    if (row.emOferta) assert.ok(row.precoAnterior > row.preco);
+    else assert.equal(row.precoAnterior, undefined);
   }
 });
 
