@@ -51,6 +51,18 @@ test('CT1: catálogo tem ao menos 20 produtos ativos, preços numéricos e image
   }
 });
 
+test('H01.3 (OP#577): carga demonstrativa tem ≥ 20 produtos, ≥ 4 categorias e ≥ 3 ofertas coerentes', async () => {
+  const { body } = await api.get('/produtos').expect(200);
+  const ofertas = body.produtos.filter(row => row.emOferta);
+  assert.ok(body.totalProdutos >= 20);
+  assert.ok((await api.get('/categorias').expect(200)).body.categorias.length >= 4);
+  assert.ok(ofertas.length >= 3);
+  const pao = ofertas.find(row => row.nome === 'Pao De Forma Visconti');
+  assert.deepEqual([pao.preco, pao.precoAnterior], [6.99, 8.49]);
+  const detail = (await api.get(`/produtos/${pao.produtoId}`).expect(200)).body;
+  assert.deepEqual([detail.emOferta, detail.precoAnterior], [true, 8.49]);
+});
+
 test('CT3: classificação contém categorias e subcategorias pertencentes à categoria', async () => {
   const { body } = await api.get('/categorias').expect(200);
   assert.ok(body.categorias.length >= 4);
