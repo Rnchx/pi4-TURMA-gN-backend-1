@@ -3,6 +3,8 @@ import { ApiError, endpoint } from '../http/errors.js';
 import { positiveId, productBody, text } from '../http/validation.js';
 import { product } from '../http/serializers.js';
 
+export const AVISO_OFERTAS = 'Ofertas demonstrativas; preços sem atualização em tempo real.';
+
 export function productsController(catalog) {
   const id = req => positiveId(req.params.id, 'produtoIdInvalido', 'Informe um produto válido.');
   return {
@@ -10,6 +12,11 @@ export function productsController(catalog) {
       const rows = await catalog.products.getProducts();
       res.json({ totalProdutos: rows.length, produtos: rows.map(row => product(row)) });
     }, 'Não foi possível carregar o catálogo.'),
+    // CT22 listarOfertasDemonstrativas: o aviso acompanha sempre a lista.
+    offers: endpoint(async (req, res) => {
+      const rows = await catalog.products.getOffers();
+      res.json({ aviso: AVISO_OFERTAS, ofertas: rows.map(row => product(row)) });
+    }, 'Não foi possível carregar as ofertas.'),
     detail: endpoint(async (req, res) => {
       res.json(product(await catalog.product(id(req)), true));
     }, 'Não foi possível consultar o produto.'),
