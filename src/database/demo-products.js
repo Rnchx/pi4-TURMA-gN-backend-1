@@ -49,6 +49,7 @@ export const demoProducts = [
   {"chave":"ciclo2-3-10","categoria":"Horti-Fruit","tipo":"frutas","nome":"Maca Gala Vermelha","preco":13.99,"descricao":"Por Kg","imagem":"https://i.imgur.com/7g74Bbe.jpg"},
   {"chave":"ciclo2-4-9","categoria":"Bebidas","tipo":"aguas","nome":"agua Mineral Crystal Sem Gas","preco":2,"descricao":"500ml","imagem":"https://i.imgur.com/wZcndcF.jpg"},
   {"chave":"ciclo2-4-10","categoria":"Bebidas","tipo":"aguas","nome":"agua Prata Sem Gas","preco":2.7,"descricao":"510ml","imagem":"https://i.imgur.com/TlYh9MW.png"},
+  {"chave":"ciclo4-alcool-1","categoria":"Bebidas","tipo":"alcoolicas","nome":"Cerveja Pilsen Demonstrativa","preco":6.99,"descricao":"350ml - venda simulada para maiores de 18 anos","imagem":"https://i.imgur.com/3RBrS9D.png","idadeMinima":18},
   {"chave":"ciclo2-5-1","categoria":"Limpeza","tipo":"corpo","nome":"Sabonete Dove Erva Doce","preco":4.1,"descricao":"90g Unidade","imagem":"https://i.imgur.com/jM9VWU2.png","precoAnterior":5.29},
   {"chave":"ciclo2-5-2","categoria":"Limpeza","tipo":"corpo","nome":"Desodorante Aerosol Nivea Protect&Care","preco":16.8,"descricao":"150g","imagem":"https://i.imgur.com/zxzX7kd.jpg"},
   {"chave":"ciclo2-5-3","categoria":"Limpeza","tipo":"corpo","nome":"Protetor Solar Facial Nivea","preco":34.9,"descricao":"40ml FPS 30 Toque Seco Antissinais","imagem":"https://i.imgur.com/ciDR1y4.jpg"},

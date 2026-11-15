@@ -10,6 +10,8 @@ import java.util.List;
 public record ConfirmacaoRequest(
         String referencia,
         String carrinhoId,
+        String usuarioId,
+        String metodoPagamento,
         BigDecimal quantidadeItens,
         BigDecimal total,
         List<Item> itens) {

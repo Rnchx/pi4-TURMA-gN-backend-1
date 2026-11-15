@@ -20,7 +20,7 @@ RUN apk upgrade --no-cache \
 WORKDIR /app
 COPY --from=build --chown=safra:safra /workspace/app.jar app.jar
 USER 10001:10001
-ENV SERVER_PORT=8080
-EXPOSE 8080
+ENV SERVER_PORT=8080 TCP_PORT=3000
+EXPOSE 8080 3000
 # Forma exec: o Java é o PID 1 e recebe o SIGTERM de "docker compose stop" para o encerramento gracioso.
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]

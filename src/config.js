@@ -8,6 +8,14 @@ function port(value, fallback, name) {
   return parsed;
 }
 
+function positiveInteger(value, fallback, name, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`Configuração inválida: ${name}.`);
+  }
+  return parsed;
+}
+
 export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const defaults = production ? '' : 'http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006';
@@ -19,16 +27,18 @@ export function readConfig(env = process.env) {
       throw new Error('CORS_ORIGINS deve conter origens HTTP/HTTPS exatas, sem curingas.');
     }
   }
-  const confirmacaoUrl = (env.CONFIRMACAO_URL || 'http://localhost:8080').replace(/\/+$/, '');
-  let parsed;
-  try { parsed = new URL(confirmacaoUrl); } catch { /* Mensagem pública abaixo. */ }
-  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new Error('Configuração inválida: CONFIRMACAO_URL.');
-  }
   return {
     port: port(env.PORT, 4000, 'PORT'),
     origins,
-    confirmacaoUrl,
+    java: {
+      host: env.JAVA_TCP_HOST || 'localhost',
+      port: port(env.JAVA_TCP_PORT, 3000, 'JAVA_TCP_PORT'),
+      timeoutMs: positiveInteger(env.JAVA_TCP_TIMEOUT_MS, 5000, 'JAVA_TCP_TIMEOUT_MS', 60000),
+      maxMessageBytes: positiveInteger(env.JAVA_TCP_MAX_MESSAGE_BYTES, 32768, 'JAVA_TCP_MAX_MESSAGE_BYTES', 1048576),
+    },
+    sessionTtlHours: positiveInteger(env.SESSION_TTL_HOURS, 168, 'SESSION_TTL_HOURS', 8760),
+    profilePhotoDir: env.PROFILE_PHOTO_DIR || './uploads/profile',
+    profilePhotoMaxBytes: positiveInteger(env.PROFILE_PHOTO_MAX_BYTES, 2097152, 'PROFILE_PHOTO_MAX_BYTES', 5242880),
     database: {
       host: env.DB_HOST || 'localhost',
       port: port(env.DB_PORT, 5432, 'DB_PORT'),

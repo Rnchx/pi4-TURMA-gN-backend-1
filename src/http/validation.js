@@ -89,8 +89,11 @@ export function quantityBody(params, body) {
 // CT15: chave de idempotência gerada pelo aplicativo e reutilizada nas novas tentativas.
 export function confirmationBody(params, body) {
   const invalid = () => new ApiError(400, 'entradaInvalida', 'Revise os dados da confirmação.');
-  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'chaveIdempotencia')) throw invalid();
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).some(key => !['chaveIdempotencia', 'metodoPagamento'].includes(key))) throw invalid();
   const key = body.chaveIdempotencia;
   if (typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,100}$/.test(key)) throw invalid();
-  return { carrinhoId: uuid(params.carrinhoId, 'entradaInvalida', 'Revise os dados da confirmação.'), chaveIdempotencia: key };
+  if (!['pix', 'credito', 'debito', 'boleto'].includes(body.metodoPagamento)) throw invalid();
+  return { carrinhoId: uuid(params.carrinhoId, 'entradaInvalida', 'Revise os dados da confirmação.'),
+    chaveIdempotencia: key, metodoPagamento: body.metodoPagamento };
 }

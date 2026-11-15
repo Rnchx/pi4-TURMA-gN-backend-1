@@ -29,18 +29,23 @@ services:
   confirmacao-java:
     build:
       context: ./services/confirmacao-java
-    image: safra/confirmacao-java:0.1.0
+    image: safra/confirmacao-java:0.2.0
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SERVER_PORT: ${JAVA_SERVER_PORT:-8080}
+      TCP_PORT: ${JAVA_TCP_PORT:-3000}
+      TCP_TIMEOUT_MS: ${JAVA_TCP_TIMEOUT_MS:-10000}
+      TCP_MAX_MESSAGE_BYTES: ${JAVA_TCP_MAX_MESSAGE_BYTES:-32768}
       # Dentro da rede do Compose o banco é o serviço "postgres", na porta interna 5432.
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-safra}
       DB_USER: ${DB_USER:?Defina DB_USER no .env}
       DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env}
-    ports:
-      - "127.0.0.1:${JAVA_PORT:-8080}:${JAVA_SERVER_PORT:-8080}"
+    # Nenhuma porta é publicada: TCP e healthcheck ficam restritos à rede safra-net.
+    expose:
+      - "${JAVA_TCP_PORT:-3000}"
+      - "${JAVA_SERVER_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,7 +63,7 @@ services:
   api:
     build:
       context: .
-    image: safra/api:0.2.0
+    image: safra/api:1.1.0
     environment:
       NODE_ENV: ${API_NODE_ENV:-development}
       PORT: 4000
@@ -69,8 +74,16 @@ services:
       DB_USER: ${DB_USER:?Defina DB_USER no .env}
       DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006}
-      # CT16: o Serviço de Confirmação é acessado pelo nome do serviço na rede interna.
-      CONFIRMACAO_URL: http://confirmacao-java:${JAVA_SERVER_PORT:-8080}
+      # O Node é cliente TCP e usa o DNS interno do Compose, nunca localhost.
+      JAVA_TCP_HOST: confirmacao-java
+      JAVA_TCP_PORT: ${JAVA_TCP_PORT:-3000}
+      JAVA_TCP_TIMEOUT_MS: ${JAVA_TCP_TIMEOUT_MS:-5000}
+      JAVA_TCP_MAX_MESSAGE_BYTES: ${JAVA_TCP_MAX_MESSAGE_BYTES:-32768}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      PROFILE_PHOTO_DIR: /app/uploads/profile
+      PROFILE_PHOTO_MAX_BYTES: ${PROFILE_PHOTO_MAX_BYTES:-2097152}
+    volumes:
+      - profile-photos:/app/uploads/profile
     ports:
       # Padrão só na máquina. Para testar no celular pela rede local, defina API_BIND_ADDRESS=0.0.0.0 no .env.
       - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}:4000"
@@ -94,6 +107,8 @@ services:
 volumes:
   pgdata:
     name: safra-pgdata
+  profile-photos:
+    name: safra-profile-photos
 
 networks:
   safra:

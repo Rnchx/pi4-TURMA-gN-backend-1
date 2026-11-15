@@ -1,0 +1,95 @@
+name: safra-test
+
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24
+    environment:
+      POSTGRES_DB: safra_test
+      POSTGRES_USER: safra_test
+      POSTGRES_PASSWORD: senha-exclusiva-do-teste
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safra_test -d safra_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+    networks: [safra-test]
+
+  confirmacao-java:
+    build: ./services/confirmacao-java
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 8080
+      TCP_PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: safra_test
+      DB_USER: safra_test
+      DB_PASSWORD: senha-exclusiva-do-teste
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose: ["3000", "8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks: [safra-test]
+
+  api:
+    build: .
+    environment:
+      NODE_ENV: test
+      PORT: 4000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: safra_test
+      DB_USER: safra_test
+      DB_PASSWORD: senha-exclusiva-do-teste
+      JAVA_TCP_HOST: confirmacao-java
+      JAVA_TCP_PORT: 3000
+      SESSION_TTL_HOURS: 1
+      PROFILE_PHOTO_DIR: /app/uploads/profile
+      PROFILE_PHOTO_MAX_BYTES: 2097152
+    volumes:
+      - profile-photos-test:/app/uploads/profile
+    command: ["sh", "-c", "node src/database/cli.js migrate && node src/database/cli.js seed && exec node src/server.js"]
+    ports: ["127.0.0.1:4400:4000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      confirmacao-java:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4000/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [safra-test]
+
+  validation:
+    build: .
+    environment:
+      API_URL: http://api:4000
+    volumes:
+      - ./tests/docker-validation.js:/tests/docker-validation.js:ro
+    command: ["node", "/tests/docker-validation.js"]
+    depends_on:
+      api:
+        condition: service_healthy
+      confirmacao-java:
+        condition: service_healthy
+    networks: [safra-test]
+
+volumes:
+  pgdata-test:
+    name: safra-test-pgdata
+  profile-photos-test:
+    name: safra-test-profile-photos
+
+networks:
+  safra-test:
+    name: safra-test-net

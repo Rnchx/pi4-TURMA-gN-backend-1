@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src/ src/
+RUN mkdir -p /app/uploads/profile && chown -R node:node /app/uploads
 USER node
 EXPOSE 4000
 # As migrations são idempotentes e registradas em schema_migrations: aplicar no início não apaga dados.

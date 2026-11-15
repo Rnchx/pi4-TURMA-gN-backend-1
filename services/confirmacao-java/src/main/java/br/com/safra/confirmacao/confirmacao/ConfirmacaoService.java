@@ -1,5 +1,6 @@
 package br.com.safra.confirmacao.confirmacao;
 
+import br.com.safra.confirmacao.usuario.RestricaoEtariaService;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,7 +31,8 @@ public class ConfirmacaoService {
     record ItemValidado(long produtoId, String nome, int quantidade, BigDecimal precoUnitario, BigDecimal subtotal) {
     }
 
-    record Validado(String referencia, UUID carrinhoId, BigDecimal total, List<ItemValidado> itens) {
+    record Validado(String referencia, UUID carrinhoId, UUID usuarioId, String metodoPagamento,
+            BigDecimal total, List<ItemValidado> itens) {
     }
 
     public record Resultado(ConfirmacaoResponse resposta, boolean criada) {
@@ -38,14 +40,18 @@ public class ConfirmacaoService {
 
     private final ComprasRepository compras;
     private final TransactionTemplate transacao;
+    private final RestricaoEtariaService restricoes;
 
-    ConfirmacaoService(ComprasRepository compras, TransactionTemplate transacao) {
+    ConfirmacaoService(ComprasRepository compras, TransactionTemplate transacao, RestricaoEtariaService restricoes) {
         this.compras = compras;
         this.transacao = transacao;
+        this.restricoes = restricoes;
     }
 
     public Resultado confirmar(ConfirmacaoRequest pedido) {
         Validado dados = validar(pedido);
+        restricoes.validar(new RestricaoEtariaService.Validacao(dados.usuarioId().toString(),
+                dados.itens().stream().map(ItemValidado::produtoId).toList()));
         try {
             return transacao.execute(status -> existente(dados).orElseGet(() -> registrar(dados)));
         } catch (DuplicateKeyException corrida) {
@@ -80,14 +86,16 @@ public class ConfirmacaoService {
     private Resultado registrar(Validado dados) {
         UUID id = UUID.randomUUID();
         String confirmacaoId = "SAFRA-DEMO-" + id.toString().substring(0, 8).toUpperCase(Locale.ROOT);
-        ComprasRepository.Compra compra = compras.inserir(id, dados.carrinhoId(), dados.referencia(), confirmacaoId, dados.total());
+        ComprasRepository.Compra compra = compras.inserir(id, dados.carrinhoId(), dados.usuarioId(), dados.referencia(),
+                confirmacaoId, dados.metodoPagamento(), dados.total());
         compras.inserirItens(id, dados.itens());
         log.info("Compra demonstrativa {} registrada com {} itens.", confirmacaoId, dados.itens().size());
         return new Resultado(resposta(compra), true);
     }
 
     private boolean mesmosDados(ComprasRepository.Compra compra, Validado dados) {
-        if (!compra.carrinhoId().equals(dados.carrinhoId()) || compra.total().compareTo(dados.total()) != 0) {
+        if (!compra.carrinhoId().equals(dados.carrinhoId()) || !compra.usuarioId().equals(dados.usuarioId())
+                || !compra.metodoPagamento().equals(dados.metodoPagamento()) || compra.total().compareTo(dados.total()) != 0) {
             return false;
         }
         List<ComprasRepository.ItemCompra> gravados = compras.itens(compra.id());
@@ -107,7 +115,8 @@ public class ConfirmacaoService {
     }
 
     private static ConfirmacaoResponse resposta(ComprasRepository.Compra compra) {
-        return new ConfirmacaoResponse(compra.confirmacaoId(), compra.id().toString(), ConfirmacaoResponse.MENSAGEM, compra.criadaEm());
+        return new ConfirmacaoResponse(compra.confirmacaoId(), compra.id().toString(), compra.metodoPagamento(),
+                ConfirmacaoResponse.MENSAGEM, compra.criadaEm());
     }
 
     private static RuntimeException traduzir(RuntimeException erro) {
@@ -137,6 +146,11 @@ public class ConfirmacaoService {
             throw ConfirmacaoException.entradaInvalida();
         }
         UUID carrinhoId = uuid(pedido.carrinhoId());
+        UUID usuarioId = uuid(pedido.usuarioId());
+        String metodoPagamento = pedido.metodoPagamento();
+        if (!List.of("pix", "credito", "debito", "boleto").contains(metodoPagamento)) {
+            throw ConfirmacaoException.entradaInvalida();
+        }
         int quantidadeItens = inteiro(pedido.quantidadeItens(), 1, Integer.MAX_VALUE);
         BigDecimal total = dinheiro(pedido.total());
         List<ItemValidado> itens = new ArrayList<>();
@@ -161,7 +175,7 @@ public class ConfirmacaoService {
         if (unidades != quantidadeItens || soma.compareTo(total) != 0) {
             throw ConfirmacaoException.entradaInvalida();
         }
-        return new Validado(pedido.referencia(), carrinhoId, total, List.copyOf(itens));
+        return new Validado(pedido.referencia(), carrinhoId, usuarioId, metodoPagamento, total, List.copyOf(itens));
     }
 
     private static UUID uuid(String valor) {

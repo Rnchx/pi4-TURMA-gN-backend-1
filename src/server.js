@@ -5,7 +5,9 @@ import { createApp } from './app.js';
 
 export async function startServer(config = readConfig()) {
   const database = createDatabase(config.database);
-  const app = createApp({ db: database.db, origins: config.origins, confirmacaoUrl: config.confirmacaoUrl });
+  const app = createApp({ db: database.db, origins: config.origins, java: config.java,
+    sessionTtlHours: config.sessionTtlHours, profilePhotoDir: config.profilePhotoDir,
+    profilePhotoMaxBytes: config.profilePhotoMaxBytes });
   let server;
   try {
     server = await new Promise((resolve, reject) => {

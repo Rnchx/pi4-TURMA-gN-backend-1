@@ -38,6 +38,8 @@ As funcionalidades previstas para o backend incluem:
 - **Carrinho de compras:** suporte às operações relacionadas aos itens selecionados.
 - **Processamento de pedidos:** validação dos itens, cálculo dos valores e registro das compras.
 - **Compra demonstrativa:** finalização acadêmica sem cobrança e sem coleta de dados financeiros.
+- **Conta do consumidor:** cadastro, autenticação, perfil com foto, troca de senha e exclusão permanente.
+- **Restrição etária acadêmica:** nascimento persistido como `DATE` e idade calculada pelo Java na adição e no checkout de produtos 18+.
 - **Persistência de dados:** armazenamento das informações utilizando PostgreSQL.
 - **Integração com Java:** comunicação com um serviço complementar desenvolvido com Spring Boot.
 - **Assistente com IA:** interpretação opcional de pedidos por texto ou áudio pela API da OpenAI, com validação no catálogo local.
@@ -86,7 +88,7 @@ PostgreSQL             Serviço Java           API OpenAI
                        PostgreSQL
 ```
 
-O frontend realiza as requisições ao backend Node.js, que centraliza o catálogo, o carrinho, os cálculos e as integrações. O backend encaminha a confirmação ao serviço Java por HTTP/REST e usa a API externa da OpenAI para o assistente.
+O frontend realiza requisições HTTP/REST ao Node.js. Para cadastro, login e confirmação, o Node atua como cliente TCP e envia JSON delimitado por quebra de linha ao `ServerSocket` Java na rede interna do Docker.
 
 O PostgreSQL será utilizado para persistir os dados da aplicação, de acordo com as responsabilidades definidas para cada serviço.
 
@@ -180,7 +182,7 @@ Os aliases `/products` e `/categorys` (formato `name/price/photo/idcategory`) fo
 - Subtotais e totais são calculados em `NUMERIC` pelo PostgreSQL (fluxo E7: 2 × 5,50 + 1 × 3,00 = 14,00). O preço fica gravado no item ao ser adicionado (CT10) e não muda se o catálogo mudar.
 - Produto repetido soma a quantidade na mesma linha. Quantidades acima de 99 são recusadas sem alterar o carrinho. Toda alteração trava o carrinho, evitando perda de unidades em requisições simultâneas.
 - A confirmação relê o carrinho travado, recusa carrinho vazio ou com produto indisponível (409) e envia ao Serviço de Confirmação (CT16) os mesmos valores do resumo; só então o carrinho passa a `confirmado`. Carrinho confirmado não aceita alterações (409 `carrinhoFechado`).
-- O aplicativo gera a `chaveIdempotencia` e a reutiliza nas novas tentativas. Repetir a mesma chave devolve a compra original, sem duplicá-la. Java indisponível ou acima de 5 s: 503 `confirmacaoIndisponivel`, com o carrinho ainda aberto.
+- O aplicativo gera a `chaveIdempotencia` e a reutiliza nas novas tentativas. Repetir a mesma chave devolve a compra original, sem duplicá-la. Java indisponível ou acima de 5 s: 503 `servicoValidacaoIndisponivel`, com o carrinho ainda aberto.
 - **Idempotência (CT15, CT16 e CT17):** reenviar a mesma `chaveIdempotencia` para o mesmo carrinho devolve a compra original com 200, mesmo depois de o carrinho estar confirmado. Assim, uma resposta perdida na rede pode ser repetida sem gerar outra compra. Carrinho já confirmado com **outra** chave, ou chave reaproveitada com dados diferentes, recebe 409 `confirmacaoNaoPermitida`, e nenhuma compra nova é criada.
 
 ### Testes
@@ -191,20 +193,20 @@ A suíte cobre CT1/CT3/CT6/CT7, carrinho CT8–CT14 (cenário E7, produto repeti
 
 ## Serviço Java com Spring Boot e Docker
 
-O Serviço de Confirmação ([`services/confirmacao-java`](services/confirmacao-java)) é independente do backend Node.js (ADR 0004), executa em contêiner Docker (ADR 0005) e se comunica com o Node por HTTP/REST com JSON. Ele implementa CT16 (`POST /confirmacoes-demonstrativas`) e grava CT17 (`compras_demonstrativas`) e CT18 (`itens_compra`) em uma única transação.
+O serviço Java ([`services/confirmacao-java`](services/confirmacao-java)) executa no Docker e se comunica com o Node por TCP, usando JSON UTF-8 delimitado por LF. O `ServerSocket` atende cadastro, autenticação, perfil, senha, foto, exclusão, restrição etária, confirmação e `health`; não há endpoint HTTP para essas operações.
 
 - Valida referência, carrinho, quantidades (1 a 99), preços e subtotais em `BigDecimal`, sem arredondamento implícito.
 - Gera o identificador `SAFRA-DEMO-XXXXXXXX` e responde 201 para uma nova compra.
 - Mesma referência com o mesmo carrinho e os mesmos dados: devolve a compra original (200). Referência reaproveitada com dados diferentes, ou carrinho já confirmado com outra referência: 409 `idempotenciaConflitante`. Requisições simultâneas são resolvidas pelas restrições `UNIQUE`.
 - Erros: 400 `entradaInvalida`, 409 `idempotenciaConflitante`, 500 `erroInterno`, 503 `bancoIndisponivel`, com as mensagens do contrato.
-- As tabelas são criadas pela migration 002 da API, que mantém o único histórico de esquema do projeto.
+- As tabelas e evoluções são criadas pelas migrations incrementais da API, que mantém o único histórico de esquema do projeto.
 
 | Item | Valor |
 |---|---|
 | Linguagem / framework | Java 21 (LTS, Eclipse Temurin) / Spring Boot 4.1.2 |
 | Build | Maven 3.9.16 via wrapper versionado (`mvnw`, checksum SHA-256 fixado) |
-| Imagem | `safra/confirmacao-java:0.1.0`, build em duas etapas; a final contém só o JRE e o JAR, roda como usuário `safra` (uid 10001) |
-| Porta | `SERVER_PORT` (padrão 8080), publicada em `127.0.0.1:${JAVA_PORT}` |
+| Imagem | `safra/confirmacao-java:0.2.0`, build em duas etapas; a final contém só o JRE e o JAR, roda como usuário `safra` (uid 10001) |
+| Portas internas | `TCP_PORT=3000` para negócio; `SERVER_PORT=8080` somente para Actuator; nenhuma é publicada pelo Compose |
 | Perfil | `docker`: banco em `postgres:5432` (nome do serviço na rede `safra-net`) |
 
 | Rota | Banco ativo | Banco desligado |
@@ -221,11 +223,11 @@ O Actuator expõe somente `health`, sem detalhes (URL JDBC, versões ou credenci
 | Conceito do exemplo | Adaptação no SAFRA |
 |---|---|
 | Servidor iniciado antes do cliente | Compose sobe o Java depois do PostgreSQL saudável; o Node é iniciado depois |
-| Servidor aguardando solicitações | Spring Boot escutando HTTP em `SERVER_PORT` |
-| Host e porta por argumento | Variáveis de ambiente (`DB_HOST`, `DB_PORT`, `SERVER_PORT`, `JAVA_PORT`) |
-| Sockets e objetos serializados | HTTP/REST com JSON |
-| Threads manuais por cliente | Pool de threads do Tomcat gerenciado pelo Spring Boot |
-| Tratamento de indisponibilidade | Readiness 503 com banco fora; a API responde 503 `confirmacaoIndisponivel` com o Java fora do ar |
+| Servidor aguardando solicitações | `Servidor` abre um `ServerSocket` em `TCP_PORT` |
+| Host e porta por argumento | `JAVA_TCP_HOST=confirmacao-java` e `JAVA_TCP_PORT=3000` no Node |
+| Sockets e objetos serializados | TCP com JSON UTF-8 por linha, interoperável entre Node e Java |
+| Threads por cliente | `AceitadoraDeConexao` entrega cada socket a uma `SupervisoraDeConexao` em pool limitado |
+| Tratamento de indisponibilidade | Timeout/desconexão viram 503 sem derrubar a API; readiness percorre protocolo e PostgreSQL |
 | Desligamento manual | `docker compose stop` envia SIGTERM e o encerramento é gracioso |
 
 ## Ambiente Docker: PostgreSQL, API e serviço Java
@@ -240,27 +242,27 @@ flowchart LR
     vol[["volume safra-pgdata"]]
   end
   app -- "HTTP/JSON<br/>EXPO_PUBLIC_API_URL" --> api
-  api -- "HTTP/JSON CT16<br/>confirmacao-java:8080" --> java
+  api -- "TCP/JSON por linha<br/>confirmacao-java:3000" --> java
   api -- "SQL<br/>postgres:5432" --> pg
   java -- "JDBC<br/>postgres:5432" --> pg
   pg --- vol
 ```
 
 - `docker compose up -d` sobe **PostgreSQL, API SAFRA e Serviço de Confirmação**. A API aplica as migrations ao iniciar; elas são idempotentes e não apagam dados. O seed continua explícito.
-- **Dentro da rede `safra-net`**, os serviços se acessam pelo nome: a API usa `postgres:5432` e `http://confirmacao-java:8080`. `localhost` dentro de um contêiner é o próprio contêiner.
-- **Na máquina**, as portas são publicadas em `127.0.0.1` (padrão e uso seguro): só este computador acessa a API, o banco e o serviço Java.
-- **Aparelho físico (Expo Go):** só durante o teste, publique a API na rede local. PostgreSQL e Java continuam em `127.0.0.1`.
+- **Dentro da rede `safra-net`**, a API usa `postgres:5432` e `confirmacao-java:3000`. `localhost` dentro de um contêiner é o próprio contêiner.
+- **Na máquina**, somente API e PostgreSQL têm portas publicadas. As portas do Java permanecem exclusivamente internas.
+- **Aparelho físico (Expo Go):** só durante o teste, publique a API na rede local. PostgreSQL e Java continuam sem exposição à rede local; o Java permanece acessível apenas pela rede interna do Compose.
   1. No `.env` do backend (não versionado), defina `API_BIND_ADDRESS=0.0.0.0` e recrie só a API: `docker compose up -d --no-deps api`.
   2. Confira pelo navegador do celular, na mesma rede Wi-Fi: `http://<IP-do-computador>:4000/health/ready`.
   3. No `.env.local` do frontend (não versionado), aponte para o IP do computador. Por exemplo: `EXPO_PUBLIC_API_URL=http://192.168.0.64:4000`.
-  4. Depois do teste, volte para `API_BIND_ADDRESS=127.0.0.1` e recrie a API. Ela não tem autenticação: não deixe exposta em redes públicas.
-- Também é possível rodar a API na máquina (`npm start`, com `DB_HOST=localhost` e `CONFIRMACAO_URL=http://localhost:8080`); nesse caso, suba só `postgres` e `confirmacao-java` para não disputar a porta 4000.
+  4. Depois do teste, volte para `API_BIND_ADDRESS=127.0.0.1` e recrie a API. Mesmo com autenticação de usuário, não exponha o ambiente de desenvolvimento em redes públicas.
+- Para executar o Node fora do Compose, seria necessário publicar temporariamente a porta TCP Java; o fluxo reproduzível e recomendado é executar os três serviços pelo Compose.
 
 | Serviço | Imagem | Porta na máquina | Healthcheck |
 |---|---|---|---|
 | `postgres` | `postgres:17.11-alpine3.24` (oficial) | `127.0.0.1:${DB_PORT:-5432}` | `pg_isready` |
-| `api` | `safra/api:0.2.0` (build local, `node:24.19.0-alpine3.24`, usuário `node`) | `${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}` | `/health/ready` |
-| `confirmacao-java` | `safra/confirmacao-java:0.1.0` (build local) | `127.0.0.1:${JAVA_PORT:-8080}` | readiness do Actuator |
+| `api` | `safra/api:1.1.0` (build local, `node:24.19.0-alpine3.24`, usuário `node`) | `${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}` | `/health/ready` |
+| `confirmacao-java` | `safra/confirmacao-java:0.2.0` (build local) | nenhuma | readiness funcional interna: TCP + PostgreSQL |
 
 Volume nomeado `safra-pgdata` (dados do PostgreSQL), rede `safra-net` e política `restart: unless-stopped`.
 
@@ -293,7 +295,6 @@ Estado, healthchecks e logs:
 docker compose ps
 docker inspect --format "{{.State.Health.Status}}" safra-postgres-1 safra-api-1 safra-confirmacao-java-1
 curl http://localhost:4000/health
-curl http://localhost:8080/actuator/health/readiness
 docker compose logs -f api
 docker compose logs confirmacao-java
 ```
@@ -332,19 +333,9 @@ docker compose down -v
 
 Se o volume já existir, alterar `DB_USER`/`DB_PASSWORD` no `.env` não muda o usuário do banco: o PostgreSQL só usa essas variáveis ao inicializar um volume vazio.
 
-### Testes do serviço Java
+### Testes e validação
 
-O `docker compose build` executa os testes que não dependem do banco (contexto, liveness, readiness indisponível, Actuator restrito e erros JSON). Para incluir os testes com o PostgreSQL do Compose, em execução, rode na raiz do backend (Git Bash):
-
-```bash
-set -a; . ./.env; set +a
-MSYS_NO_PATHCONV=1 docker run --rm --network safra-net \
-  -e SAFRA_TESTE_COM_BANCO=1 -e DB_HOST=postgres -e DB_PORT=5432 -e DB_NAME -e DB_USER -e DB_PASSWORD \
-  -v "$(pwd -W)/services/confirmacao-java:/src:ro" -v safra-m2-cache:/root/.m2 \
-  eclipse-temurin:21.0.13_9-jdk-alpine-3.24 sh -c 'cp -r /src /w && cd /w && sh mvnw -B test'
-```
-
-Em Linux/macOS, use `$(pwd)` no lugar de `$(pwd -W)` e omita `MSYS_NO_PATHCONV=1`.
+Consulte [`docs/VALIDACAO.md`](docs/VALIDACAO.md) para os testes Node, Java, protocolo TCP, autenticação, checkout, logs e falhas controladas. O contrato de mensagens está em [`docs/contratos/TCP-JSON.md`](docs/contratos/TCP-JSON.md).
 
 ## API e comunicação com o frontend
 

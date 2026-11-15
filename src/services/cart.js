@@ -16,15 +16,16 @@ const closed = () => new ApiError(409, 'carrinhoFechado', 'O carrinho não pode 
 const DEMO_MESSAGE = 'Compra demonstrativa concluída. Nenhuma cobrança foi realizada.';
 
 export default class Cart {
-  constructor(db, carts, confirmar) {
+  constructor(db, carts, confirmar, validarIdade = async () => {}) {
     this.db = db;
     this.carts = carts;
     this.confirmar = confirmar;
+    this.validarIdade = validarIdade;
   }
 
   // CT8 adicionarItemAoCarrinho (OP#588): cria o carrinho de visitante quando necessário e
   // soma a quantidade quando o produto já está no carrinho (OP#591), sem duplicar a linha.
-  add({ carrinhoId, produtoId, quantidade }) {
+  add({ carrinhoId, produtoId, quantidade, usuario }) {
     return this.db.tx(async t => {
       let cart;
       if (carrinhoId) {
@@ -34,6 +35,10 @@ export default class Cart {
       }
       const product = await this.carts.activeProduct(t, produtoId);
       if (!product) throw new ApiError(404, 'recursoNaoEncontrado', 'Carrinho ou produto não encontrado.');
+      if (product.idade_minima > 0) {
+        if (!usuario) throw new ApiError(401, 'naoAutorizado', 'Faça login para adicionar produtos com restrição etária.');
+        await this.validarIdade({ usuarioId: usuario.id, produtoIds: [produtoId] });
+      }
       cart ??= await this.carts.create(t, randomUUID());
       const row = await this.carts.addItem(t, cart.id, produtoId, quantidade, product.preco);
       if (!row) throw new ApiError(400, 'entradaInvalida', 'Revise o produto e a quantidade.');
@@ -119,19 +124,25 @@ export default class Cart {
   // (CT16) os mesmos valores do resumo e marca o carrinho como confirmado (CT9) após a gravação da compra.
   // O bloqueio FOR NO KEY UPDATE impede alterações no carrinho e é compatível com a chave estrangeira gravada
   // pelo serviço Java. Uma nova tentativa com a mesma chave devolve a compra original, sem duplicá-la.
-  confirm({ carrinhoId, chaveIdempotencia }) {
+  confirm({ carrinhoId, chaveIdempotencia, metodoPagamento, usuario }) {
     return this.db.tx(async t => {
       const cart = await this.carts.lock(t, carrinhoId);
       if (!cart) throw new ApiError(404, 'carrinhoNaoEncontrado', 'Carrinho não encontrado.');
+      if (cart.usuario_id && cart.usuario_id !== usuario.id) {
+        throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode ser confirmado.');
+      }
       const rows = await this.carts.items(t, carrinhoId);
       if (!rows.length || rows.some(row => !row.disponivel)) {
         throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode ser confirmado.');
       }
       const itens = rows.map(item);
       const total = money(await this.carts.total(t, carrinhoId));
+      await this.carts.bindUser(t, carrinhoId, usuario.id);
       const compra = await this.confirmar({
         referencia: chaveIdempotencia,
         carrinhoId,
+        usuarioId: usuario.id,
+        metodoPagamento,
         quantidadeItens: itens.reduce((sum, row) => sum + row.quantidade, 0),
         total,
         itens,
@@ -145,6 +156,8 @@ export default class Cart {
           status: 'concluida_demonstrativa',
           itens,
           total,
+          metodoPagamento,
+          usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email },
           mensagem: DEMO_MESSAGE,
           criadaEm: compra.geradaEm,
         },

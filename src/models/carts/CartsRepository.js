@@ -9,7 +9,7 @@ const itemsSql = `SELECT i.produto_id, p.nome, i.quantidade, i.preco_unitario,
   JOIN categorias c ON c.id = p.categoria_id
   WHERE i.carrinho_id = $1 ORDER BY i.id`;
 
-const activeProductSql = `SELECT p.id, p.nome, p.preco FROM produtos p
+const activeProductSql = `SELECT p.id, p.nome, p.preco, p.idade_minima FROM produtos p
   JOIN subcategorias s ON s.id = p.subcategoria_id AND s.categoria_id = p.categoria_id
   JOIN categorias c ON c.id = p.categoria_id
   WHERE p.id = $1 AND p.ativo AND s.ativo AND c.ativo`;
@@ -37,6 +37,10 @@ export default class CartsRepository {
   confirm(t, id) {
     return t.none(`UPDATE carrinhos SET status = 'confirmado', atualizado_em = now()
       WHERE id = $1 AND status = 'aberto'`, [id]);
+  }
+
+  bindUser(t, id, userId) {
+    return t.none('UPDATE carrinhos SET usuario_id = COALESCE(usuario_id, $2) WHERE id = $1 AND (usuario_id IS NULL OR usuario_id = $2)', [id, userId]);
   }
 
   activeProduct(t, productId) {

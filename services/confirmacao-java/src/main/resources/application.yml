@@ -31,6 +31,13 @@ server:
     include-exception: false
     include-binding-errors: never
 
+safra:
+  tcp:
+    port: ${TCP_PORT:3000}
+    timeout-ms: ${TCP_TIMEOUT_MS:10000}
+    max-message-bytes: ${TCP_MAX_MESSAGE_BYTES:32768}
+    max-connections: ${TCP_MAX_CONNECTIONS:50}
+
 management:
   endpoints:
     web:
@@ -46,7 +53,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db
+          include: readinessState,db,validacaoTcp
   health:
     db:
       enabled: true

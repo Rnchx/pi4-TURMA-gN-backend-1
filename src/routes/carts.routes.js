@@ -1,15 +1,16 @@
 import { Router } from 'express';
 import { cartsController } from '../controllers/carts.controller.js';
+import { optionalAuth, requireAuth } from '../http/auth-middleware.js';
 
 // CT8, CT11, CT12, CT13, CT14 e CT15.
-export default function cartsRouter(cart) {
+export default function cartsRouter(cart, auth) {
   const router = Router();
   const ctrl = cartsController(cart);
-  router.post('/itens', ctrl.add);
+  router.post('/itens', optionalAuth(auth), ctrl.add);
   router.get('/:carrinhoId', ctrl.get);
   router.patch('/:carrinhoId/itens/:produtoId', ctrl.updateQuantity);
   router.delete('/:carrinhoId/itens/:produtoId', ctrl.removeItem);
   router.get('/:carrinhoId/resumo', ctrl.summary);
-  router.post('/:carrinhoId/confirmacao-demonstrativa', ctrl.confirm);
+  router.post('/:carrinhoId/confirmacao-demonstrativa', requireAuth(auth), ctrl.confirm);
   return router;
 }

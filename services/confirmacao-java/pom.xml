@@ -13,7 +13,7 @@
 
   <groupId>br.com.safra</groupId>
   <artifactId>confirmacao-java</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <name>SAFRA Confirmação</name>
   <description>Serviço de Confirmação do SAFRA Online (ADR 0004/0005, CT16–CT18).</description>
 
@@ -34,6 +34,15 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-crypto</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.82</version>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>

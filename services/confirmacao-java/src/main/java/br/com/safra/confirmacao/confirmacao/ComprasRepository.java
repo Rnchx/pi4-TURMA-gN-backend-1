@@ -13,17 +13,19 @@ import org.springframework.stereotype.Repository;
 @Repository
 class ComprasRepository {
 
-    record Compra(UUID id, UUID carrinhoId, String confirmacaoId, BigDecimal total, OffsetDateTime criadaEm) {
+    record Compra(UUID id, UUID carrinhoId, UUID usuarioId, String confirmacaoId, String metodoPagamento,
+            BigDecimal total, OffsetDateTime criadaEm) {
     }
 
     record ItemCompra(long produtoId, int quantidade, BigDecimal precoUnitario) {
     }
 
-    private static final String COLUNAS = "id, carrinho_id, confirmacao_id, total, criada_em";
+    private static final String COLUNAS = "id, carrinho_id, usuario_id, confirmacao_id, metodo_pagamento, total, criada_em";
 
     private static final RowMapper<Compra> COMPRA = (rs, n) -> new Compra(
-            rs.getObject("id", UUID.class), rs.getObject("carrinho_id", UUID.class), rs.getString("confirmacao_id"),
-            rs.getBigDecimal("total"), rs.getObject("criada_em", OffsetDateTime.class));
+            rs.getObject("id", UUID.class), rs.getObject("carrinho_id", UUID.class), rs.getObject("usuario_id", UUID.class),
+            rs.getString("confirmacao_id"), rs.getString("metodo_pagamento"), rs.getBigDecimal("total"),
+            rs.getObject("criada_em", OffsetDateTime.class));
 
     private final JdbcTemplate jdbc;
 
@@ -47,10 +49,12 @@ class ComprasRepository {
                 compraId);
     }
 
-    Compra inserir(UUID id, UUID carrinhoId, String chave, String confirmacaoId, BigDecimal total) {
+    Compra inserir(UUID id, UUID carrinhoId, UUID usuarioId, String chave, String confirmacaoId,
+            String metodoPagamento, BigDecimal total) {
         return jdbc.queryForObject("""
-                INSERT INTO compras_demonstrativas(id, carrinho_id, chave_idempotencia, confirmacao_id, total)
-                VALUES (?, ?, ?, ?, ?) RETURNING """ + " " + COLUNAS, COMPRA, id, carrinhoId, chave, confirmacaoId, total);
+                INSERT INTO compras_demonstrativas(id, carrinho_id, usuario_id, chave_idempotencia, confirmacao_id, metodo_pagamento, total)
+                VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING """ + " " + COLUNAS, COMPRA, id, carrinhoId, usuarioId,
+                chave, confirmacaoId, metodoPagamento, total);
     }
 
     void inserirItens(UUID compraId, List<ConfirmacaoService.ItemValidado> itens) {

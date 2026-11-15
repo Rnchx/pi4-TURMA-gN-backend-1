@@ -5,7 +5,7 @@ export function cartsController(cart) {
   const cartId = req => uuid(req.params.carrinhoId, 'carrinhoIdInvalido', 'Informe um carrinho válido.');
   return {
     add: endpoint(async (req, res) => {
-      res.json(await cart.add(cartItemBody(req.body)));
+      res.json(await cart.add({ ...cartItemBody(req.body), usuario: req.auth?.usuario }));
     }, 'Não foi possível adicionar o produto.'),
     get: endpoint(async (req, res) => {
       res.json(await cart.get(cartId(req)));
@@ -22,7 +22,7 @@ export function cartsController(cart) {
       res.json(await cart.summary(cartId(req)));
     }, 'Não foi possível gerar o resumo.'),
     confirm: endpoint(async (req, res) => {
-      const { criada, body } = await cart.confirm(confirmationBody(req.params, req.body));
+      const { criada, body } = await cart.confirm({ ...confirmationBody(req.params, req.body), usuario: req.auth.usuario });
       res.status(criada ? 201 : 200).json(body);
     }, 'Não foi possível concluir a compra demonstrativa.'),
   };

@@ -1,37 +1,37 @@
 import { before, after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { temporaryPostgres } from './helpers/postgres.js';
 import { createApp } from '../src/app.js';
 import { readConfig } from '../src/config.js';
 import { migrate } from '../src/database/migrate.js';
 import { seed } from '../src/database/seed.js';
+import { ApiError } from '../src/http/errors.js';
 
 // Serviço de Confirmação simulado (CT16): registra as chamadas e responde conforme o cenário.
-let java, javaUrl, calls, respond, postgres, api, pao, leite;
+let calls, respond, postgres, api, pao, leite, token, usuarioId;
 
 before(async () => {
-  java = createServer((req, res) => {
-    let raw = '';
-    req.on('data', chunk => { raw += chunk; });
-    req.on('end', async () => {
-      const body = JSON.parse(raw);
-      calls.push({ method: req.method, url: req.url, body });
-      const [status, payload, delay] = await respond(body);
-      setTimeout(() => {
-        res.writeHead(status, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(payload));
-      }, delay ?? 0);
-    });
-  });
-  await new Promise(resolve => java.listen(0, '127.0.0.1', resolve));
-  javaUrl = `http://127.0.0.1:${java.address().port}`;
   postgres = await temporaryPostgres();
-  api = request(createApp({ db: postgres.db, origins: [], confirmacaoUrl: javaUrl, confirmacaoTimeoutMs: 800 }));
   await migrate(postgres.db);
   await seed(postgres.db);
+  const javaClient = async (operacao, body) => {
+    calls.push({ operacao, body });
+    const [status, payload, delay] = await respond(body);
+    if (delay > 800) throw new ApiError(503, 'servicoValidacaoIndisponivel', 'O serviço de validação está indisponível. Tente novamente.');
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    if ([200, 201].includes(status)) return { ...payload, criada: status === 201 };
+    if (status === 409) throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode ser confirmado.');
+    if ([502, 503, 504].includes(status)) throw new ApiError(503, 'servicoValidacaoIndisponivel', 'O serviço de validação está indisponível. Tente novamente.');
+    throw new Error('Falha simulada');
+  };
+  api = request(createApp({ db: postgres.db, origins: [], javaClient }));
+  usuarioId = randomUUID();
+  token = `teste_${randomUUID()}_${randomUUID()}`;
+  await postgres.db.none(`INSERT INTO usuarios(id,nome,cpf,email,senha_hash) VALUES($1,'Maria da Silva','52998224725',$2,'$argon2id$teste')`, [usuarioId, `maria.${usuarioId}@gmail.com`]);
+  await postgres.db.none(`INSERT INTO sessoes(id,usuario_id,token_hash,expira_em) VALUES($1,$2,$3,now()+interval '1 hour')`,
+    [randomUUID(), usuarioId, createHash('sha256').update(token).digest('hex')]);
   const sub = await postgres.db.one("SELECT s.* FROM subcategorias s JOIN categorias c ON c.id=s.categoria_id WHERE c.nome='Padaria' ORDER BY s.id LIMIT 1");
   const make = (nome, preco) => api.post('/produtos').send({ nome, preco, descricao: 'Cenário', imagemUrl: 'https://example.com/p.png',
     categoriaId: sub.categoria_id, subcategoriaId: sub.id }).expect(201).then(r => r.body);
@@ -41,7 +41,6 @@ before(async () => {
 
 after(async () => {
   await postgres?.cleanup();
-  await new Promise(resolve => java?.close(resolve));
 });
 
 const compras = new Map();
@@ -68,20 +67,21 @@ async function cartE7() {
   return carrinhoId;
 }
 
-const confirm = (carrinhoId, chaveIdempotencia, status) => api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`)
-  .send({ chaveIdempotencia }).expect(status).then(r => r.body);
+const confirm = (carrinhoId, chaveIdempotencia, status, metodoPagamento = 'pix') => api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`)
+  .set('Authorization', `Bearer ${token}`).send({ chaveIdempotencia, metodoPagamento }).expect(status).then(r => r.body);
 
 test('CT15 (OP#600/OP#603): confirma, envia ao Java os valores do resumo e fecha o carrinho', async () => {
   const carrinhoId = await cartE7();
   const summary = (await api.get(`/carrinhos/${carrinhoId}/resumo`)).body;
   const key = `confirmacao-${randomUUID()}`;
   const body = await confirm(carrinhoId, key, 201);
-  assert.deepEqual(calls.map(c => [c.method, c.url]), [['POST', '/confirmacoes-demonstrativas']]);
-  assert.deepEqual(calls[0].body, { referencia: key, carrinhoId, quantidadeItens: 3, total: 14, itens: summary.itens });
+  assert.deepEqual(calls.map(c => c.operacao), ['confirmarCompra']);
+  assert.deepEqual(calls[0].body, { referencia: key, carrinhoId, usuarioId, metodoPagamento: 'pix', quantidadeItens: 3, total: 14, itens: summary.itens });
   assert.equal(body.status, 'concluida_demonstrativa');
   assert.match(body.confirmacaoId, /^SAFRA-DEMO-[0-9A-F]{8}$/);
   assert.deepEqual(body.itens, summary.itens);
   assert.equal(body.total, summary.total);
+  assert.equal(body.metodoPagamento, 'pix');
   assert.equal(body.mensagem, 'Compra demonstrativa concluída. Nenhuma cobrança foi realizada.');
   assert.equal(body.criadaEm, '2026-11-05T12:00:00Z');
   assert.equal((await api.get(`/carrinhos/${carrinhoId}`)).body.status, 'confirmado');
@@ -112,7 +112,8 @@ test('CT15: carrinho já confirmado com outra chave é recusado (409) sem criar 
 test('CT15: tentativas simultâneas com a mesma chave resultam em uma única compra', async () => {
   const carrinhoId = await cartE7();
   const key = `confirmacao-${randomUUID()}`;
-  const results = await Promise.all([1, 2, 3].map(() => api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`).send({ chaveIdempotencia: key })));
+  const results = await Promise.all([1, 2, 3].map(() => api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`)
+    .set('Authorization', `Bearer ${token}`).send({ chaveIdempotencia: key, metodoPagamento: 'pix' })));
   assert.deepEqual(results.map(r => r.status).sort(), [200, 200, 201]);
   assert.equal(new Set(results.map(r => r.body.compraId)).size, 1);
 });
@@ -133,9 +134,10 @@ test('CT15: carrinho vazio ou com produto indisponível não é enviado ao Java 
 test('CT15: entradas inválidas e carrinho inexistente', async () => {
   const carrinhoId = await cartE7();
   const invalid = { codigo: 'entradaInvalida', mensagem: 'Revise os dados da confirmação.' };
-  for (const body of [{}, { chaveIdempotencia: 'curta' }, { chaveIdempotencia: 12345678 }, { chaveIdempotencia: 'tem espaço aqui' },
-    { chaveIdempotencia: `confirmacao-${randomUUID()}`, extra: 1 }]) {
-    assert.deepEqual((await api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`).send(body).expect(400)).body, invalid);
+  for (const body of [{}, { chaveIdempotencia: 'curta', metodoPagamento: 'pix' }, { chaveIdempotencia: 12345678, metodoPagamento: 'pix' },
+    { chaveIdempotencia: 'tem espaço aqui', metodoPagamento: 'pix' }, { chaveIdempotencia: `confirmacao-${randomUUID()}`, metodoPagamento: 'dinheiro' },
+    { chaveIdempotencia: `confirmacao-${randomUUID()}`, metodoPagamento: 'pix', extra: 1 }]) {
+    assert.deepEqual((await api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`).set('Authorization', `Bearer ${token}`).send(body).expect(400)).body, invalid);
   }
   assert.deepEqual(await confirm('abc', `confirmacao-${randomUUID()}`, 400), invalid);
   assert.deepEqual(await confirm(randomUUID(), `confirmacao-${randomUUID()}`, 404),
@@ -153,7 +155,7 @@ test('CT15: Java recusa (409) e o carrinho continua aberto', async () => {
 
 test('CT15: Java indisponível, lento ou sem banco responde 503; erro interno do Java responde 500', async () => {
   const carrinhoId = await cartE7();
-  const unavailable = { codigo: 'confirmacaoIndisponivel', mensagem: 'Tente novamente mais tarde.' };
+  const unavailable = { codigo: 'servicoValidacaoIndisponivel', mensagem: 'O serviço de validação está indisponível. Tente novamente.' };
   respond = () => [503, { codigo: 'bancoIndisponivel', mensagem: 'A confirmação não pôde ser persistida.' }];
   assert.deepEqual(await confirm(carrinhoId, `confirmacao-${randomUUID()}`, 503), unavailable);
   respond = () => [201, {}, 1500];
@@ -161,15 +163,17 @@ test('CT15: Java indisponível, lento ou sem banco responde 503; erro interno do
   respond = () => [500, { codigo: 'erroInterno', mensagem: 'A confirmação não pôde ser gerada.' }];
   assert.deepEqual(await confirm(carrinhoId, `confirmacao-${randomUUID()}`, 500),
     { codigo: 'erroInterno', mensagem: 'Não foi possível concluir a compra demonstrativa.' });
-  const offline = request(createApp({ db: postgres.db, confirmacaoUrl: 'http://127.0.0.1:1', confirmacaoTimeoutMs: 800 }));
+  const offline = request(createApp({ db: postgres.db, java: { host: '127.0.0.1', port: 1, timeoutMs: 100, maxMessageBytes: 32768 } }));
   assert.deepEqual((await offline.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`)
-    .send({ chaveIdempotencia: `confirmacao-${randomUUID()}` }).expect(503)).body, unavailable);
+    .set('Authorization', `Bearer ${token}`).send({ chaveIdempotencia: `confirmacao-${randomUUID()}`, metodoPagamento: 'pix' }).expect(503)).body,
+    { codigo: 'servicoValidacaoIndisponivel', mensagem: 'O serviço de validação está indisponível. Tente novamente.' });
   assert.equal((await api.get(`/carrinhos/${carrinhoId}`)).body.status, 'aberto');
 });
 
-test('CONFIRMACAO_URL inválida é recusada na configuração', () => {
-  for (const value of ['ftp://java', 'nao-e-url', 'http://user:senha@java:8080']) {
-    assert.throws(() => readConfig({ CONFIRMACAO_URL: value }), /CONFIRMACAO_URL/);
+test('configuração TCP valida porta, limites e duração da sessão', () => {
+  for (const value of ['0', '65536', 'abc']) assert.throws(() => readConfig({ JAVA_TCP_PORT: value }), /JAVA_TCP_PORT/);
+  for (const [name, value] of [['JAVA_TCP_TIMEOUT_MS', '0'], ['JAVA_TCP_MAX_MESSAGE_BYTES', '-1'], ['SESSION_TTL_HOURS', 'abc']]) {
+    assert.throws(() => readConfig({ [name]: value }), new RegExp(name));
   }
-  assert.equal(readConfig({ CONFIRMACAO_URL: 'http://confirmacao-java:8080/' }).confirmacaoUrl, 'http://confirmacao-java:8080');
+  assert.equal(readConfig({ JAVA_TCP_HOST: 'confirmacao-java', JAVA_TCP_PORT: '3000' }).java.port, 3000);
 });

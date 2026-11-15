@@ -3,6 +3,7 @@
 - **Atende:** E9 e E10
 - **Fronteira:** Aplicativo SAFRA -> API SAFRA, HTTP/JSON
 - **Operação:** `POST /carrinhos/{carrinhoId}/confirmacao-demonstrativa`
+- **Autenticação:** `Authorization: Bearer <token-de-sessão>`
 - **Quem define:** API SAFRA
 
 ## Entrada
@@ -11,6 +12,7 @@
 | --- | --- | --- | --- | --- |
 | carrinhoId | texto | sim | `0c9d92c6-6939-4a33-9132-2dd75fe512ad` | UUID em parâmetro de rota. |
 | chaveIdempotencia | texto | sim | `confirmacao-9f3819dd-8e95-4fd5-a735-6ca8b80de8ad` | Única por tentativa lógica. Reenviar a mesma chave para o mesmo carrinho devolve a compra original (200), sem criar outra; a primeira confirmação responde 201. |
+| metodoPagamento | um de: pix, credito, debito, boleto | sim | `pix` | Método apenas demonstrativo; dados financeiros nunca são recebidos. |
 
 ## Saída
 
@@ -21,6 +23,8 @@
 | status | um de: concluida_demonstrativa | sim | `concluida_demonstrativa` | Não representa pagamento ou pedido real. |
 | itens | lista de objeto | sim | `[{"produtoId":31,"quantidade":2,"subtotal":11.00}]` | Cópia imutável do resumo confirmado. |
 | total | decimal | sim | `14.00` | Total confirmado. |
+| metodoPagamento | texto | sim | `pix` | Método fictício escolhido pelo usuário. |
+| usuario | objeto | sim | `{"id":"...","nome":"Ana Souza","email":"ana@gmail.com"}` | Identidade da sessão autenticada que confirmou a compra. |
 | mensagem | texto | sim | `Compra demonstrativa concluída. Nenhuma cobrança foi realizada.` | Sempre informa o caráter demonstrativo. |
 | criadaEm | data-hora | sim | `2026-10-12T19:00:00Z` | Momento da confirmação. |
 
@@ -29,6 +33,8 @@
 | Código | Quando acontece | Resposta ao chamador |
 | --- | --- | --- |
 | 400 | UUID ou chave inválida. | `{"codigo":"entradaInvalida","mensagem":"Revise os dados da confirmação."}` |
+| 401 | Token ausente, inválido, revogado ou expirado. | `{"codigo":"naoAutorizado","mensagem":"Faça login para continuar."}` |
+| 403 | Usuário menor de 18 anos ou conta legada sem nascimento tenta confirmar produto restrito. | `{"codigo":"restricaoEtaria","mensagem":"Este produto é permitido somente para consumidores com 18 anos ou mais."}` |
 | 404 | Carrinho não existe. | `{"codigo":"carrinhoNaoEncontrado","mensagem":"Carrinho não encontrado."}` |
 | 409 | Carrinho vazio, fechado por outra confirmação ou chave reaproveitada com dados diferentes. | `{"codigo":"confirmacaoNaoPermitida","mensagem":"O carrinho não pode ser confirmado."}` |
 | 503 | Serviço de Confirmação indisponível. | `{"codigo":"confirmacaoIndisponivel","mensagem":"Tente novamente mais tarde."}` |

@@ -1,9 +1,13 @@
 # CT16: gerarConfirmacaoDemonstrativa
 
 - **Atende:** E9 e E10
-- **Fronteira:** API SAFRA em Node.js -> Serviço de Confirmação em Java/Spring Boot, HTTP/JSON interno
-- **Operação:** `POST /confirmacoes-demonstrativas`
+- **Fronteira:** API SAFRA em Node.js -> Serviço Java, TCP interno com JSON delimitado por `LF`
+- **Operação:** `confirmarCompra`
 - **Quem define:** Serviço de Confirmação em Java
+
+O envelope, a correlação por `requestId`, os limites e os códigos de transporte estão definidos em [TCP-JSON.md](TCP-JSON.md). A porta TCP não é publicada no host.
+
+Antes de gravar a compra, o Java relê do PostgreSQL a data de nascimento do usuário autenticado e a idade mínima dos produtos. A idade nunca é recebida do frontend.
 
 ## Entrada
 
@@ -11,6 +15,8 @@
 | --- | --- | --- | --- | --- |
 | referencia | texto | sim | `confirmacao-9f3819dd-8e95-4fd5-a735-6ca8b80de8ad` | Chave de idempotência recebida em CT15. |
 | carrinhoId | texto | sim | `0c9d92c6-6939-4a33-9132-2dd75fe512ad` | UUID do carrinho validado pela API. |
+| usuarioId | texto | sim | `4be6b563-a11e-42ce-aa10-2c5a7a488f41` | UUID do usuário da sessão autenticada. |
+| metodoPagamento | um de: pix, credito, debito, boleto | sim | `pix` | Método demonstrativo escolhido em CT15. |
 | quantidadeItens | inteiro | sim | `3` | Maior que zero. |
 | total | decimal | sim | `14.00` | Total calculado pela API SAFRA. |
 | itens | lista de objeto | sim | `[{"produtoId":31,"nome":"Pão de forma","quantidade":2,"precoUnitario":5.50,"subtotal":11.00}]` | Lista não vazia e coerente com `quantidadeItens` e `total`. |
@@ -26,8 +32,10 @@
 | --- | --- | --- | --- | --- |
 | confirmacaoId | texto | sim | `SAFRA-DEMO-6278CDDD` | Identificador demonstrativo estável para a referência. |
 | compraId | texto | sim | `6278cddd-9295-4e04-88f7-966b02bef9ab` | UUID persistido em CT17. |
+| metodoPagamento | texto | sim | `pix` | Método demonstrativo persistido com a compra. |
 | mensagem | texto | sim | `Compra demonstrativa concluída.` | Não menciona pagamento aprovado. |
 | geradaEm | data-hora | sim | `2026-10-12T19:00:00Z` | Momento da geração. |
+| criada | booleano | sim | `true` | `false` quando a mesma referência idempotente retorna a compra já existente. |
 
 ## Erros
 
