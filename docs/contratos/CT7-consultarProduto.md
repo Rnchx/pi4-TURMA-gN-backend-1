@@ -17,7 +17,7 @@
 | --- | --- | --- | --- | --- |
 | produtoId | inteiro | sim | `31` | Mesmo identificador do catálogo. |
 | nome | texto | sim | `Pão de forma` | Igual a CT2. |
-| imagemUrl | texto | sim | `https://exemplo.com/pao.jpg` | Igual a CT2. |
+| imagemUrl | texto ou nulo | sim | `https://exemplo.com/pao.jpg` | Igual a CT2; pode ser `null`. |
 | descricao | texto | sim | `Pacote de 400 g` | Igual a CT2. |
 | preco | decimal | sim | `5.50` | Igual a CT2. |
 | emOferta | booleano | sim | `true` | Igual a `em_oferta` de CT2. |

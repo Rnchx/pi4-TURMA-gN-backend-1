@@ -21,7 +21,7 @@
 | produtos | lista de objeto | sim | `[{"produtoId":31,"nome":"Pão de forma","preco":5.50}]` | Somente produtos correspondentes e ativos. |
 | produtos[].produtoId | inteiro | sim | `31` | Mesmo identificador de CT2. |
 | produtos[].nome | texto | sim | `Pão de forma` | Mesmo nome de CT2. |
-| produtos[].imagemUrl | texto | sim | `https://exemplo.com/pao.jpg` | URL HTTPS. |
+| produtos[].imagemUrl | texto ou nulo | sim | `https://exemplo.com/pao.jpg` | URL HTTPS original ou `null` enquanto aguarda curadoria manual. |
 | produtos[].preco | decimal | sim | `5.50` | Mesmo preço de CT2. |
 | produtos[].emOferta | booleano | sim | `true` | Mesmo indicador de CT2. |
 | produtos[].precoAnterior | decimal | não | `6.90` | Presente quando `emOferta` for verdadeiro. |

@@ -38,7 +38,7 @@ export function readConfig(env = process.env) {
     },
     sessionTtlHours: positiveInteger(env.SESSION_TTL_HOURS, 168, 'SESSION_TTL_HOURS', 8760),
     profilePhotoDir: env.PROFILE_PHOTO_DIR || './uploads/profile',
-    profilePhotoMaxBytes: positiveInteger(env.PROFILE_PHOTO_MAX_BYTES, 2097152, 'PROFILE_PHOTO_MAX_BYTES', 5242880),
+    profilePhotoMaxBytes: positiveInteger(env.PROFILE_PHOTO_MAX_BYTES, 10485760, 'PROFILE_PHOTO_MAX_BYTES', 10485760),
     database: {
       host: env.DB_HOST || 'localhost',
       port: port(env.DB_PORT, 5432, 'DB_PORT'),

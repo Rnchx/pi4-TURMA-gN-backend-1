@@ -12,7 +12,7 @@ Docker cria o ambiente e a rede; não valida dados por conta própria. O Node.js
 4. Carregue o catálogo com `docker compose exec api node src/database/cli.js seed`.
 5. Verifique `docker compose ps` e `curl http://localhost:4000/health/ready`.
 
-O seed atual contém 104 produtos em 10 setores e pode ser executado novamente sem duplicação. Para checar as imagens HTTPS acrescentadas nesta versão antes de carregar os dados, execute `npm run verify:images`.
+O seed atual contém 237 produtos únicos em 10 setores e pode ser executado novamente sem duplicação. Ele preserva as 191 URLs do INSERT original e deixa 46 produtos da expansão com imagem pendente. Para conferir essa consolidação antes de carregar os dados, execute `npm run verify:images`.
 
 Para validar o volume de fotos no ambiente normal, execute `npm run verify:photo-persistence`. O roteiro cria uma conta temporária, envia um PNG, reinicia somente o contêiner `api`, compara o arquivo devolvido e remove foto e conta ao terminar. O volume do banco e o volume de fotos não são apagados.
 

@@ -132,8 +132,8 @@ No frontend, crie seu `.env` local a partir do exemplo e configure `EXPO_PUBLIC_
 - `db:check` verifica conexão. `db:migrate` aplica arquivos versionados em transação, com registro em `schema_migrations` e trava contra execução concorrente.
 - A primeira migration cria `categorias`, `subcategorias` e `produtos`, alinhadas a CT2/CT4/CT5. Se `categorys` e `products` legadas existirem, importa os registros preservando IDs e cria subcategorias a partir de `type`. As tabelas originais são preservadas como histórico, sem receber novas escritas da API. Faça backup antes de migrar um banco existente.
 - Duplicidade de categorias, referências inválidas ou dados incompatíveis com as restrições interrompem e revertem a migration; nenhum dado é apagado ou ajustado silenciosamente. Corrija os dados com revisão antes de tentar novamente.
-- `db:seed` é explícito e repetível: 104 produtos distribuídos em 10 setores e suas subcategorias, com 6 ofertas demonstrativas (`em_oferta` e `preco_anterior` maior que o preço atual). Preserva os produtos anteriores, usa chave demonstrativa fixa e atualiza os mesmos registros sem duplicá-los nem apagar cadastros manuais. As imagens HTTPS explícitas podem ser verificadas com `npm run verify:images`.
-- A migration `005-catalogo-setores-alcool.sql` acrescenta o marcador explícito `alcoolico`. O banco exige que todo item alcoólico também possua `idade_minima = 18`; a validação da idade autenticada continua sendo executada pelo serviço Java na adição e na confirmação.
+- `db:seed` é explícito e repetível: 237 produtos únicos distribuídos em 10 setores e suas subcategorias, com ofertas demonstrativas (`em_oferta` e `preco_anterior` maior que o preço atual). Os 191 itens do INSERT original preservam suas URLs; os 46 itens da expansão aguardam imagem manual com `imagem_url = NULL`. O seed usa chave demonstrativa fixa e atualiza os mesmos registros sem duplicá-los nem apagar cadastros manuais. A consolidação pode ser verificada com `npm run verify:images`.
+- A migration `005-catalogo-setores-alcool.sql` acrescenta o marcador explícito `alcoolico`. O banco exige que todo item alcoólico também possua `idade_minima = 18`; a validação da idade autenticada continua sendo executada pelo serviço Java na adição e na confirmação. A migration `006-imagem-produto-opcional.sql` permite `imagem_url` nula para itens ainda sem foto curada, mantendo a exigência HTTPS quando houver URL.
 - Com o Compose normal saudável, `npm run verify:photo-persistence` cria uma conta descartável, envia uma imagem, reinicia somente a API, confere o mesmo arquivo no volume persistente e remove os dados de teste.
 - `npm start` abre HTTP e verifica a conexão, capturando a falha. Não migra nem popula o banco. Consultas possuem limite de tempo; a API volta a atender quando o PostgreSQL retorna.
 - SIGINT/SIGTERM encerram HTTP e o pool. `db:check`, `db:migrate` e `db:seed` retornam código 1 em caso de falha, sem imprimir credenciais ou consultas.
@@ -164,7 +164,7 @@ Readiness verifica conectividade; migrations precisam ser aplicadas separadament
 | DELETE /produtos/:produtoId | Desativa o produto; retorna 204 ou 404. |
 | DELETE /categorias/:categoriaId | Remove categoria sem vínculos; 409 se houver dependências. |
 
-As escritas exigem campos completos, texto não vazio e limites de tamanho, preço não negativo com até duas casas e imagem HTTPS sem credenciais. IDs são inteiros positivos de 32 bits; categoria e subcategoria devem existir e ser compatíveis. Os campos de oferta (`emOferta` e, quando verdadeiro, `precoAnterior`) aparecem nas leituras conforme os contratos; as ofertas vêm da carga demonstrativa, e não há cadastro de ofertas pela API. Listas vazias retornam 200 com array vazio. Erros JSON têm `codigo` e `mensagem`; validação retorna 400, ausência retorna 404, conflito retorna 409. Os cadastros não têm autenticação neste ciclo; não exponha esta API demonstrativa publicamente.
+As escritas exigem os campos de texto e classificação, limites de tamanho e preço não negativo com até duas casas. `imagemUrl` é opcional; quando informada, deve ser HTTPS e não conter credenciais. IDs são inteiros positivos de 32 bits; categoria e subcategoria devem existir e ser compatíveis. Os campos de oferta (`emOferta` e, quando verdadeiro, `precoAnterior`) aparecem nas leituras conforme os contratos; as ofertas vêm da carga demonstrativa, e não há cadastro de ofertas pela API. Listas vazias retornam 200 com array vazio. Erros JSON têm `codigo` e `mensagem`; validação retorna 400, ausência retorna 404, conflito retorna 409. Os cadastros não têm autenticação neste ciclo; não exponha esta API demonstrativa publicamente.
 
 ### Rotas legadas removidas (OP#1335)
 
@@ -301,7 +301,7 @@ docker compose logs -f api
 docker compose logs confirmacao-java
 ```
 
-Carga demonstrativa (104 produtos em 10 setores, repetível, sem duplicar):
+Carga demonstrativa (237 produtos em 10 setores, repetível, sem duplicar):
 
 ```bash
 docker compose exec api node src/database/cli.js seed

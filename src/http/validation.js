@@ -37,11 +37,14 @@ export function productBody(body) {
   if (!['number', 'string'].includes(typeof body.preco) || !/^\d{1,8}(\.\d{1,2})?$/.test(String(body.preco))) {
     throw new ApiError(400, 'dadosInvalidos', 'Informe um preço não negativo com até duas casas decimais.');
   }
-  const image = text(body.imagemUrl, 2048, 'a URL da imagem');
-  let url;
-  try { url = new URL(image); } catch { /* Mensagem pública abaixo. */ }
-  if (!url || url.protocol !== 'https:' || url.username || url.password) {
-    throw new ApiError(400, 'dadosInvalidos', 'Informe uma URL HTTPS de imagem sem credenciais.');
+  let image = null;
+  if (body.imagemUrl !== undefined && body.imagemUrl !== null) {
+    image = text(body.imagemUrl, 2048, 'a URL da imagem');
+    let url;
+    try { url = new URL(image); } catch { /* Mensagem pública abaixo. */ }
+    if (!url || url.protocol !== 'https:' || url.username || url.password) {
+      throw new ApiError(400, 'dadosInvalidos', 'Informe uma URL HTTPS de imagem sem credenciais.');
+    }
   }
   return {
     nome: text(body.nome, 255, 'o nome'),

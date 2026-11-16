@@ -53,7 +53,7 @@ services:
       JAVA_TCP_PORT: 3000
       SESSION_TTL_HOURS: 1
       PROFILE_PHOTO_DIR: /app/uploads/profile
-      PROFILE_PHOTO_MAX_BYTES: 2097152
+      PROFILE_PHOTO_MAX_BYTES: 10485760
     volumes:
       - profile-photos-test:/app/uploads/profile
     command: ["sh", "-c", "node src/database/cli.js migrate && node src/database/cli.js seed && exec node src/server.js"]

@@ -19,7 +19,7 @@ Regras: nome completo sem números; CPF com verificadores válidos; e-mail estru
 - `GET /auth/perfil`: o Node pede ao Java nome, e-mail, nascimento e idade calculada.
 - `PATCH /auth/perfil`: altera somente o nome. CPF, e-mail e nascimento são recusados pelo Java.
 - `POST /auth/perfil/alterar-senha`: valida senha atual, grava novo Argon2id e invalida todas as sessões.
-- `GET|PUT|DELETE /auth/perfil/foto`: lê, substitui ou remove JPEG/PNG/WebP de até 2 MB. O arquivo fica em volume persistente; o banco guarda uma chave aleatória.
+- `GET|PUT|DELETE /auth/perfil/foto`: lê, substitui ou remove JPEG/PNG/WebP de até 10 MB. O arquivo fica em volume persistente; o banco guarda uma chave aleatória.
 - `DELETE /auth/conta`: exige senha, apaga a conta e sessões, desvincula compras técnicas e remove a foto.
 - `POST /auth/logout`: revoga a sessão e responde `204`.
 

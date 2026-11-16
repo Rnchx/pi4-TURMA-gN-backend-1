@@ -1,23 +1,14 @@
-import { demoProducts } from '../src/database/demo-products.js';
+import { demoProducts, originalProductCount, pendingManualImageCount } from '../src/database/demo-products.js';
 
-const products = demoProducts.filter(product => product.chave.startsWith('setores-'));
-const failures = [];
+const withImage = demoProducts.filter(product => product.imagem !== null);
+const pending = demoProducts.filter(product => product.imagem === null);
+const invalid = withImage.filter(product => {
+  try { return new URL(product.imagem).protocol !== 'https:'; } catch { return true; }
+});
 
-for (const product of products) {
-  try {
-    const response = await fetch(product.imagem, { headers: { Range: 'bytes=0-2047', 'User-Agent': 'SafraOnlineAcademic/1.2' } });
-    const type = response.headers.get('content-type') || '';
-    if (!response.ok || !type.startsWith('image/')) {
-      failures.push(`${product.nome}: HTTP ${response.status}, ${type || 'sem Content-Type'}`);
-    }
-  } catch (error) {
-    failures.push(`${product.nome}: ${error.message}`);
-  }
-}
-
-if (failures.length) {
-  console.error(['Imagens não verificadas:', ...failures.map(item => `- ${item}`)].join('\n'));
+if (withImage.length !== originalProductCount || pending.length !== pendingManualImageCount || invalid.length) {
+  console.error(`Catálogo inconsistente: ${withImage.length} com imagem, ${pending.length} pendentes, ${invalid.length} URLs inválidas.`);
   process.exitCode = 1;
 } else {
-  console.log(`${products.length} imagens novas verificadas com resposta HTTPS de imagem.`);
+  console.log(`${withImage.length} URLs originais preservadas; ${pending.length} produtos aguardam imagem manual.`);
 }

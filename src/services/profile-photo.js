@@ -11,7 +11,7 @@ const TYPES = {
 const KEY = /^[0-9a-f-]{36}\.(jpg|png|webp)$/;
 
 export default class ProfilePhoto {
-  constructor(db, java, directory, maxBytes = 2 * 1024 * 1024) {
+  constructor(db, java, directory, maxBytes = 10 * 1024 * 1024) {
     this.db = db;
     this.java = java;
     this.directory = path.resolve(directory);
@@ -22,7 +22,7 @@ export default class ProfilePhoto {
     const type = String(contentType || '').split(';')[0].trim().toLowerCase();
     const format = TYPES[type];
     if (!format || !Buffer.isBuffer(body) || body.length < 16 || body.length > this.maxBytes || !format.valid(body)) {
-      throw new ApiError(400, 'fotoInvalida', 'Escolha uma imagem JPEG, PNG ou WebP de até 2 MB.');
+      throw new ApiError(400, 'fotoInvalida', `Envie uma imagem JPEG, PNG ou WebP válida de até ${Math.floor(this.maxBytes / 1048576)} MB.`);
     }
     const key = `${randomUUID()}.${format.ext}`;
     await mkdir(this.directory, { recursive: true });

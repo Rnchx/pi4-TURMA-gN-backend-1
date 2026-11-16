@@ -13,7 +13,7 @@ import Auth from './services/auth.js';
 import ProfilePhoto from './services/profile-photo.js';
 
 export function createApp({ db, origins = [], java = { host: 'localhost', port: 3000, timeoutMs: 5000, maxMessageBytes: 32768 },
-  sessionTtlHours = 168, profilePhotoDir = './uploads/profile', profilePhotoMaxBytes = 2097152, javaClient }) {
+  sessionTtlHours = 168, profilePhotoDir = './uploads/profile', profilePhotoMaxBytes = 10485760, javaClient }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({

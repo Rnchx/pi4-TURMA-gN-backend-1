@@ -17,7 +17,7 @@ Não tem.
 | ofertas | lista de objeto | sim | `[{"produtoId":31,"nome":"Pão de forma","preco":5.50,"precoAnterior":6.90,"emOferta":true}]` | Somente produtos ativos com `em_oferta` verdadeiro em CT2. |
 | ofertas[].produtoId | inteiro | sim | `31` | Identificador de CT2. |
 | ofertas[].nome | texto | sim | `Pão de forma` | Nome de CT2. |
-| ofertas[].imagemUrl | texto | sim | `https://exemplo.com/pao.jpg` | Imagem de CT2. |
+| ofertas[].imagemUrl | texto ou nulo | sim | `https://exemplo.com/pao.jpg` | Imagem de CT2; pode ser `null`. |
 | ofertas[].preco | decimal | sim | `5.50` | Preço atual de CT2. |
 | ofertas[].precoAnterior | decimal | sim | `6.90` | Maior que `preco`. |
 | ofertas[].emOferta | booleano | sim | `true` | Sempre verdadeiro nesta operação. |

@@ -17,7 +17,7 @@ Não tem.
 | produtos | lista de objeto | sim | `[{"produtoId":31,"nome":"Pão de forma","preco":5.50}]` | Contém somente produtos ativos. |
 | produtos[].produtoId | inteiro | sim | `31` | Identificador positivo. |
 | produtos[].nome | texto | sim | `Pão de forma` | Mesmo nome de CT2. |
-| produtos[].imagemUrl | texto | sim | `https://exemplo.com/pao.jpg` | URL HTTPS da imagem. |
+| produtos[].imagemUrl | texto ou nulo | sim | `https://exemplo.com/pao.jpg` | URL HTTPS original ou `null` enquanto aguarda curadoria manual. |
 | produtos[].preco | decimal | sim | `5.50` | Reais, duas casas, valor não negativo. |
 | produtos[].emOferta | booleano | sim | `true` | Indica oferta demonstrativa cadastrada localmente. |
 | produtos[].precoAnterior | decimal | não | `6.90` | Obrigatório quando `emOferta` for verdadeiro e maior que `preco`. |

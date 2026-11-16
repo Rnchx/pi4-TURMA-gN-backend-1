@@ -16,7 +16,7 @@ Os campos gravados são os mesmos campos lidos.
 | subcategoria_id | inteiro | sim | `4` | Chave estrangeira para `subcategorias.id`. |
 | nome | texto | sim | `Pão de forma` | Entre 1 e 255 caracteres. |
 | descricao | texto | sim | `Pacote de 400 g` | Entre 1 e 500 caracteres. |
-| imagem_url | texto | sim | `https://exemplo.com/pao.jpg` | URL HTTPS. |
+| imagem_url | texto ou nulo | não | `https://exemplo.com/pao.jpg` | URL HTTPS; `null` usa o marcador visual padrão do SAFRA. |
 | preco | decimal | sim | `5.50` | Reais, duas casas, valor não negativo. |
 | em_oferta | booleano | sim | `true` | Verdadeiro somente para oferta demonstrativa. |
 | preco_anterior | decimal | não | `6.90` | Obrigatório e maior que `preco` quando `em_oferta` for verdadeiro. |

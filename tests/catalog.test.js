@@ -10,6 +10,7 @@ import { readConfig } from '../src/config.js';
 import { createDatabase } from '../src/database/index.js';
 import { migrate } from '../src/database/migrate.js';
 import { seed } from '../src/database/seed.js';
+import { demoProducts, originalProductCount, pendingManualImageCount } from '../src/database/demo-products.js';
 
 let postgres, app, api, category, subcategory, sample;
 const valid = () => ({ nome: 'Produto do teste', preco: 12.34, descricao: 'Pacote de teste',
@@ -35,14 +36,14 @@ test('saúde distingue processo HTTP de conectividade com PostgreSQL', async () 
   assert.equal((await api.get('/health').expect(200)).body.banco, 'disponivel');
 });
 
-test('CT1: catálogo tem ao menos 20 produtos ativos, preços numéricos e imagens HTTPS', async () => {
+test('CT1: catálogo tem produtos ativos, preços numéricos e imagem HTTPS opcional', async () => {
   const { body } = await api.get('/produtos').expect(200);
   assert.ok(body.totalProdutos >= 20);
   assert.equal(body.produtos.length, body.totalProdutos);
   for (const row of body.produtos) {
     assert.ok(row.produtoId > 0);
     assert.ok(row.nome);
-    assert.ok(row.imagemUrl.startsWith('https://'));
+    assert.ok(row.imagemUrl === null || row.imagemUrl.startsWith('https://'));
     assert.equal(typeof row.preco, 'number');
     assert.ok(row.preco >= 0);
     assert.equal(typeof row.emOferta, 'boolean');
@@ -57,7 +58,7 @@ test('H01.3 (OP#577): carga demonstrativa tem ≥ 20 produtos, ≥ 4 categorias 
   assert.ok(body.totalProdutos >= 20);
   assert.ok((await api.get('/categorias').expect(200)).body.categorias.length >= 4);
   assert.ok(ofertas.length >= 3);
-  const pao = ofertas.find(row => row.nome === 'Pao De Forma Visconti');
+  const pao = ofertas.find(row => row.nome === 'Pão de Forma Visconti');
   assert.deepEqual([pao.preco, pao.precoAnterior], [6.99, 8.49]);
   const detail = (await api.get(`/produtos/${pao.produtoId}`).expect(200)).body;
   assert.deepEqual([detail.emOferta, detail.precoAnterior], [true, 8.49]);
@@ -76,6 +77,19 @@ test('catálogo demonstrativo expõe os 10 setores completos sem duplicar as cha
   }
   assert.equal(Number((await postgres.db.one('SELECT count(*) FROM produtos WHERE demo_chave IS NOT NULL')).count),
     Number((await postgres.db.one('SELECT count(DISTINCT demo_chave) FROM produtos WHERE demo_chave IS NOT NULL')).count));
+});
+
+test('catálogo consolida o INSERT original e remove somente imagens da expansão automática', async () => {
+  assert.equal(originalProductCount, 191);
+  assert.equal(pendingManualImageCount, 46);
+  assert.equal(demoProducts.length, 237);
+  assert.equal(new Set(demoProducts.map(row => row.chave)).size, demoProducts.length);
+  assert.equal(demoProducts.filter(row => row.imagem !== null).length, originalProductCount);
+  assert.equal(demoProducts.filter(row => row.imagem === null).length, pendingManualImageCount);
+  assert.ok(demoProducts.filter(row => row.imagem !== null).every(row => row.imagem.startsWith('https://')));
+  assert.ok(demoProducts.filter(row => row.chave.startsWith('setores-')).every(row => row.imagem === null));
+  assert.equal(demoProducts.find(row => row.nome === 'Pão de Forma Visconti').imagem, 'https://i.imgur.com/Nyoak5f.jpg');
+  assert.equal(demoProducts.find(row => row.nome === 'Vodka Smirnoff Red').alcoolico, true);
 });
 
 test('bebidas alcoólicas possuem marcador explícito e idade mínima coerente', async () => {
@@ -175,6 +189,14 @@ test('cria e atualiza produto oficial com persistência dos IDs e timestamp', as
   assert.ok(row.atualizado_em >= before.atualizado_em);
 });
 
+test('cadastro aceita produto sem imagem e devolve imagemUrl nula', async () => {
+  const body = valid();
+  delete body.imagemUrl;
+  const created = (await api.post('/produtos').send(body).expect(201)).body;
+  assert.equal(created.imagemUrl, null);
+  assert.equal((await postgres.db.one('SELECT imagem_url FROM produtos WHERE id=$1', [created.produtoId])).imagem_url, null);
+});
+
 test('criação/atualização de categoria escreve categorias, sem alterar produtos', async () => {
   const before = (await api.get(`/produtos/${sample.id}`)).body;
   const row = (await api.post('/categorias').send({ nome: 'Categoria teste' }).expect(201)).body;
@@ -240,7 +262,7 @@ test('migrate e seed repetíveis: IDs preservados, sem duplicação ou perda de 
   await seed(postgres.db);
   assert.deepEqual(await postgres.db.any('SELECT id, demo_chave FROM produtos ORDER BY id'), before);
   assert.deepEqual(await postgres.db.any('SELECT id, nome FROM categorias ORDER BY id'), categoriesBefore);
-  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 5);
+  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 6);
 });
 
 test('migração importa banco legado sem apagar originais nem perder chaves', async () => {
