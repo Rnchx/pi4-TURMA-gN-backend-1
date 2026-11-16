@@ -14,23 +14,33 @@ import org.springframework.stereotype.Repository;
 class ComprasRepository {
 
     record Compra(UUID id, UUID carrinhoId, UUID usuarioId, String confirmacaoId, String metodoPagamento,
-            BigDecimal total, OffsetDateTime criadaEm) {
+            BigDecimal subtotal, String cupom, BigDecimal desconto, BigDecimal total, OffsetDateTime criadaEm) {
     }
 
     record ItemCompra(long produtoId, int quantidade, BigDecimal precoUnitario) {
     }
 
-    private static final String COLUNAS = "id, carrinho_id, usuario_id, confirmacao_id, metodo_pagamento, total, criada_em";
+    private static final String COLUNAS = "id, carrinho_id, usuario_id, confirmacao_id, metodo_pagamento, subtotal, cupom_codigo, "
+            + "desconto, total, criada_em";
 
     private static final RowMapper<Compra> COMPRA = (rs, n) -> new Compra(
             rs.getObject("id", UUID.class), rs.getObject("carrinho_id", UUID.class), rs.getObject("usuario_id", UUID.class),
-            rs.getString("confirmacao_id"), rs.getString("metodo_pagamento"), rs.getBigDecimal("total"),
+            rs.getString("confirmacao_id"), rs.getString("metodo_pagamento"), rs.getBigDecimal("subtotal"),
+            rs.getString("cupom_codigo"), rs.getBigDecimal("desconto"), rs.getBigDecimal("total"),
             rs.getObject("criada_em", OffsetDateTime.class));
 
     private final JdbcTemplate jdbc;
 
     ComprasRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /**
+     * Serializa as confirmações da mesma conta até o fim da transação. Assim a regra "primeira compra"
+     * de um cupom é reavaliada depois que qualquer confirmação concorrente da mesma conta terminou.
+     */
+    void bloquearUsuario(UUID usuarioId) {
+        jdbc.query("SELECT pg_advisory_xact_lock(20261116, hashtext(?))", rs -> null, usuarioId.toString());
     }
 
     Optional<Compra> porChave(String chave) {
@@ -49,12 +59,13 @@ class ComprasRepository {
                 compraId);
     }
 
-    Compra inserir(UUID id, UUID carrinhoId, UUID usuarioId, String chave, String confirmacaoId,
-            String metodoPagamento, BigDecimal total) {
+    Compra inserir(UUID id, UUID carrinhoId, UUID usuarioId, String chave, String confirmacaoId, String metodoPagamento,
+            BigDecimal subtotal, String cupom, BigDecimal desconto, BigDecimal total) {
         return jdbc.queryForObject("""
-                INSERT INTO compras_demonstrativas(id, carrinho_id, usuario_id, chave_idempotencia, confirmacao_id, metodo_pagamento, total)
-                VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING """ + " " + COLUNAS, COMPRA, id, carrinhoId, usuarioId,
-                chave, confirmacaoId, metodoPagamento, total);
+                INSERT INTO compras_demonstrativas(id, carrinho_id, usuario_id, chave_idempotencia, confirmacao_id,
+                  metodo_pagamento, subtotal, cupom_codigo, desconto, total)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING """ + " " + COLUNAS, COMPRA, id, carrinhoId, usuarioId,
+                chave, confirmacaoId, metodoPagamento, subtotal, cupom, desconto, total);
     }
 
     void inserirItens(UUID compraId, List<ConfirmacaoService.ItemValidado> itens) {

@@ -8,6 +8,8 @@ const STATUS = {
   emailDuplicado: 409, idempotenciaConflitante: 409, confirmacaoNaoPermitida: 409,
   campoNaoEditavel: 400, senhaAtualIncorreta: 401, restricaoEtaria: 403, dataNascimentoAusente: 403,
   bancoIndisponivel: 503, servicoIndisponivel: 503,
+  cupomInvalido: 400, cupomIndisponivel: 409, cupomJaUtilizado: 409, cupomExpirado: 409,
+  carrinhoNaoEncontrado: 404, compraNaoEncontrada: 404,
 };
 
 const unavailable = () => new ApiError(503, 'servicoValidacaoIndisponivel', 'O serviço de validação está indisponível. Tente novamente.');

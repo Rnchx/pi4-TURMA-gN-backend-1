@@ -1,5 +1,7 @@
 package br.com.safra.confirmacao.confirmacao;
 
+import br.com.safra.confirmacao.cupom.CupomService;
+import br.com.safra.confirmacao.usuario.OperacaoException;
 import br.com.safra.confirmacao.usuario.RestricaoEtariaService;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -21,7 +23,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** CT16: valida, aplica a idempotência e grava CT17 e CT18 em uma única transação. */
+/**
+ * CT16: valida, aplica a idempotência e grava CT17 e CT18 em uma única transação. O cupom é revalidado
+ * dentro dessa transação, depois de um bloqueio por usuário, e o desconto/total final são calculados aqui.
+ */
 @Service
 public class ConfirmacaoService {
 
@@ -32,7 +37,7 @@ public class ConfirmacaoService {
     }
 
     record Validado(String referencia, UUID carrinhoId, UUID usuarioId, String metodoPagamento,
-            BigDecimal total, List<ItemValidado> itens) {
+            BigDecimal subtotal, String cupom, List<ItemValidado> itens) {
     }
 
     public record Resultado(ConfirmacaoResponse resposta, boolean criada) {
@@ -41,11 +46,14 @@ public class ConfirmacaoService {
     private final ComprasRepository compras;
     private final TransactionTemplate transacao;
     private final RestricaoEtariaService restricoes;
+    private final CupomService cupons;
 
-    ConfirmacaoService(ComprasRepository compras, TransactionTemplate transacao, RestricaoEtariaService restricoes) {
+    ConfirmacaoService(ComprasRepository compras, TransactionTemplate transacao, RestricaoEtariaService restricoes,
+            CupomService cupons) {
         this.compras = compras;
         this.transacao = transacao;
         this.restricoes = restricoes;
+        this.cupons = cupons;
     }
 
     public Resultado confirmar(ConfirmacaoRequest pedido) {
@@ -53,8 +61,15 @@ public class ConfirmacaoService {
         restricoes.validar(new RestricaoEtariaService.Validacao(dados.usuarioId().toString(),
                 dados.itens().stream().map(ItemValidado::produtoId).toList()));
         try {
-            return transacao.execute(status -> existente(dados).orElseGet(() -> registrar(dados)));
+            return transacao.execute(status -> {
+                compras.bloquearUsuario(dados.usuarioId());
+                return existente(dados).orElseGet(() -> registrar(dados));
+            });
         } catch (DuplicateKeyException corrida) {
+            if (String.valueOf(corrida.getMessage()).contains("compras_primeira40_por_usuario")) {
+                // Última barreira do banco: o índice único parcial impede o segundo uso de PRIMEIRA40.
+                throw new OperacaoException("cupomJaUtilizado", "Este cupom já foi utilizado nesta conta.");
+            }
             // Outra tentativa gravou a mesma referência ou o mesmo carrinho ao mesmo tempo: relê e aplica a regra.
             try {
                 return transacao.execute(status -> existente(dados).orElseThrow(ConfirmacaoException::idempotenciaConflitante));
@@ -86,8 +101,15 @@ public class ConfirmacaoService {
     private Resultado registrar(Validado dados) {
         UUID id = UUID.randomUUID();
         String confirmacaoId = "SAFRA-DEMO-" + id.toString().substring(0, 8).toUpperCase(Locale.ROOT);
+        BigDecimal desconto = BigDecimal.ZERO.setScale(2);
+        String cupom = null;
+        if (dados.cupom() != null) {
+            CupomService.Avaliacao avaliacao = cupons.avaliar(dados.usuarioId(), dados.cupom(), dados.subtotal());
+            desconto = avaliacao.desconto();
+            cupom = avaliacao.codigo();
+        }
         ComprasRepository.Compra compra = compras.inserir(id, dados.carrinhoId(), dados.usuarioId(), dados.referencia(),
-                confirmacaoId, dados.metodoPagamento(), dados.total());
+                confirmacaoId, dados.metodoPagamento(), dados.subtotal(), cupom, desconto, dados.subtotal().subtract(desconto));
         compras.inserirItens(id, dados.itens());
         log.info("Compra demonstrativa {} registrada com {} itens.", confirmacaoId, dados.itens().size());
         return new Resultado(resposta(compra), true);
@@ -95,7 +117,8 @@ public class ConfirmacaoService {
 
     private boolean mesmosDados(ComprasRepository.Compra compra, Validado dados) {
         if (!compra.carrinhoId().equals(dados.carrinhoId()) || !compra.usuarioId().equals(dados.usuarioId())
-                || !compra.metodoPagamento().equals(dados.metodoPagamento()) || compra.total().compareTo(dados.total()) != 0) {
+                || !compra.metodoPagamento().equals(dados.metodoPagamento()) || compra.subtotal().compareTo(dados.subtotal()) != 0
+                || !java.util.Objects.equals(compra.cupom(), dados.cupom())) {
             return false;
         }
         List<ComprasRepository.ItemCompra> gravados = compras.itens(compra.id());
@@ -116,11 +139,11 @@ public class ConfirmacaoService {
 
     private static ConfirmacaoResponse resposta(ComprasRepository.Compra compra) {
         return new ConfirmacaoResponse(compra.confirmacaoId(), compra.id().toString(), compra.metodoPagamento(),
-                ConfirmacaoResponse.MENSAGEM, compra.criadaEm());
+                ConfirmacaoResponse.MENSAGEM, compra.criadaEm(), compra.subtotal(), compra.cupom(), compra.desconto(), compra.total());
     }
 
     private static RuntimeException traduzir(RuntimeException erro) {
-        if (erro instanceof ConfirmacaoException) {
+        if (erro instanceof ConfirmacaoException || erro instanceof OperacaoException) {
             return erro;
         }
         if (erro instanceof CannotCreateTransactionException || erro instanceof DataAccessResourceFailureException
@@ -152,7 +175,11 @@ public class ConfirmacaoService {
             throw ConfirmacaoException.entradaInvalida();
         }
         int quantidadeItens = inteiro(pedido.quantidadeItens(), 1, Integer.MAX_VALUE);
-        BigDecimal total = dinheiro(pedido.total());
+        BigDecimal total = dinheiro(pedido.subtotal());
+        String cupom = pedido.cupom();
+        if (cupom != null && (cupom.isEmpty() || cupom.length() > 30)) {
+            throw ConfirmacaoException.entradaInvalida();
+        }
         List<ItemValidado> itens = new ArrayList<>();
         HashSet<Long> produtos = new HashSet<>();
         int unidades = 0;
@@ -175,7 +202,7 @@ public class ConfirmacaoService {
         if (unidades != quantidadeItens || soma.compareTo(total) != 0) {
             throw ConfirmacaoException.entradaInvalida();
         }
-        return new Validado(pedido.referencia(), carrinhoId, usuarioId, metodoPagamento, total, List.copyOf(itens));
+        return new Validado(pedido.referencia(), carrinhoId, usuarioId, metodoPagamento, total, cupom, List.copyOf(itens));
     }
 
     private static UUID uuid(String valor) {

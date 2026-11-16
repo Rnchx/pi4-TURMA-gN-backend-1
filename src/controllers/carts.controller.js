@@ -1,5 +1,5 @@
 import { endpoint } from '../http/errors.js';
-import { cartItemBody, quantityBody, uuid, positiveId, confirmationBody } from '../http/validation.js';
+import { cartItemBody, quantityBody, uuid, positiveId, confirmationBody, couponBody } from '../http/validation.js';
 
 export function cartsController(cart) {
   const cartId = req => uuid(req.params.carrinhoId, 'carrinhoIdInvalido', 'Informe um carrinho válido.');
@@ -21,6 +21,9 @@ export function cartsController(cart) {
     summary: endpoint(async (req, res) => {
       res.json(await cart.summary(cartId(req)));
     }, 'Não foi possível gerar o resumo.'),
+    coupon: endpoint(async (req, res) => {
+      res.json(await cart.validateCoupon({ ...couponBody(req.params, req.body), usuario: req.auth.usuario }));
+    }, 'Não foi possível validar o cupom.'),
     confirm: endpoint(async (req, res) => {
       const { criada, body } = await cart.confirm({ ...confirmationBody(req.params, req.body), usuario: req.auth.usuario });
       res.status(criada ? 201 : 200).json(body);

@@ -69,6 +69,11 @@ export default class CartsRepository {
     return t.oneOrNone('DELETE FROM itens_carrinho WHERE carrinho_id = $1 AND produto_id = $2 RETURNING id', [cartId, productId]);
   }
 
+  quantity(t, cartId, productId) {
+    return t.oneOrNone('SELECT quantidade FROM itens_carrinho WHERE carrinho_id = $1 AND produto_id = $2', [cartId, productId])
+      .then(row => row?.quantidade ?? 0);
+  }
+
   items(t, cartId) {
     return t.manyOrNone(itemsSql, [cartId]);
   }

@@ -11,6 +11,7 @@ import Cart from './services/cart.js';
 import { tcpClient } from './services/tcp-client.js';
 import Auth from './services/auth.js';
 import ProfilePhoto from './services/profile-photo.js';
+import Purchases from './services/purchases.js';
 
 export function createApp({ db, origins = [], java = { host: 'localhost', port: 3000, timeoutMs: 5000, maxMessageBytes: 32768 },
   sessionTtlHours = 168, profilePhotoDir = './uploads/profile', profilePhotoMaxBytes = 10485760, javaClient }) {
@@ -40,9 +41,12 @@ export function createApp({ db, origins = [], java = { host: 'localhost', port: 
   const validator = javaClient || tcpClient(java);
   const auth = new Auth(db, validator, sessionTtlHours);
   const photos = new ProfilePhoto(db, validator, profilePhotoDir, profilePhotoMaxBytes);
-  const cart = new Cart(db, new CartsRepository(db), payload => validator('confirmarCompra', payload),
-    payload => validator('validarRestricaoEtaria', payload));
-  app.use(createRouter(catalog, cart, auth, photos));
+  const cartsRepository = new CartsRepository(db);
+  const validarIdade = payload => validator('validarRestricaoEtaria', payload);
+  const cart = new Cart(db, cartsRepository, payload => validator('confirmarCompra', payload), validarIdade,
+    payload => validator('validarCupom', payload));
+  const purchases = new Purchases(db, cartsRepository, validator, validarIdade);
+  app.use(createRouter(catalog, cart, auth, photos, purchases));
   app.use((req, res) => res.status(404).json({ codigo: 'rotaNaoEncontrada', mensagem: 'Rota não encontrada.' }));
   app.use(errorHandler);
   return app;

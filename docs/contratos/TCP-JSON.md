@@ -32,7 +32,19 @@ Operações:
 - `alterarFotoPerfil`: grava ou limpa somente a chave persistente validada da foto.
 - `validarRestricaoEtaria`: consulta nascimento e idade mínima dos produtos no PostgreSQL.
 - `excluirConta`: confirma a senha e executa a exclusão permanente com integridade referencial.
-- `confirmarCompra`: recebe referência idempotente, carrinho, usuário, método, total e itens.
+- `confirmarCompra`: recebe referência idempotente, carrinho, usuário, método, subtotal, cupom opcional e itens; revalida o cupom na transação e devolve subtotal, cupom, desconto e total final.
+- `validarCupom`: recebe usuário, carrinho e código; lê o subtotal do carrinho e devolve desconto e total ([CT26](CT26-validarCupom.md)).
+- `listarHistoricoCompras`: recebe usuário e limite (máx. 3); devolve as compras mais recentes com itens ([CT24](CT24-listarHistoricoCompras.md)).
+- `consultarCompra`: recebe usuário e compra; devolve a compra somente se pertencer ao usuário ([CT25](CT25-repetirCompra.md)).
+
+| Operação | Entrada `dados` | Saída `dados` | Erros de negócio |
+| --- | --- | --- | --- |
+| `confirmarCompra` | `referencia`, `carrinhoId`, `usuarioId`, `metodoPagamento`, `quantidadeItens`, `subtotal`, `cupom`, `itens[]` | `confirmacaoId`, `compraId`, `metodoPagamento`, `mensagem`, `geradaEm`, `subtotal`, `cupom`, `desconto`, `total`, `criada` | `entradaInvalida`, `idempotenciaConflitante`, `restricaoEtaria`, `cupomInvalido`, `cupomIndisponivel`, `cupomJaUtilizado` |
+| `validarCupom` | `usuarioId`, `carrinhoId`, `codigo` | `codigo`, `subtotal`, `desconto`, `total`, `mensagem` | `cupomInvalido`, `cupomIndisponivel`, `cupomJaUtilizado`, `carrinhoNaoEncontrado`, `confirmacaoNaoPermitida` |
+| `listarHistoricoCompras` | `usuarioId`, `limite` | `compras[]` | `naoAutorizado`, `entradaInvalida` |
+| `consultarCompra` | `usuarioId`, `compraId` | compra com `itens[]` | `compraNaoEncontrada` |
+
+`cupomExpirado` fica reservado para cupons com validade, ainda não usados.
 
 `requestId` aparece nos logs, mas CPF, senha, hash, token e o corpo completo nunca são registrados.
 

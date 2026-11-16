@@ -10,7 +10,7 @@ import { readConfig } from '../src/config.js';
 import { createDatabase } from '../src/database/index.js';
 import { migrate } from '../src/database/migrate.js';
 import { seed } from '../src/database/seed.js';
-import { demoProducts, originalProductCount, pendingManualImageCount } from '../src/database/demo-products.js';
+import { demoProducts, originalProductCount, curatedImageCount, pendingManualImageCount } from '../src/database/demo-products.js';
 
 let postgres, app, api, category, subcategory, sample;
 const valid = () => ({ nome: 'Produto do teste', preco: 12.34, descricao: 'Pacote de teste',
@@ -81,13 +81,14 @@ test('catálogo demonstrativo expõe os 10 setores completos sem duplicar as cha
 
 test('catálogo consolida o INSERT original e remove somente imagens da expansão automática', async () => {
   assert.equal(originalProductCount, 191);
-  assert.equal(pendingManualImageCount, 46);
+  assert.equal(curatedImageCount, 46);
+  assert.equal(pendingManualImageCount, 0);
   assert.equal(demoProducts.length, 237);
   assert.equal(new Set(demoProducts.map(row => row.chave)).size, demoProducts.length);
-  assert.equal(demoProducts.filter(row => row.imagem !== null).length, originalProductCount);
+  assert.equal(demoProducts.filter(row => row.imagem !== null).length, originalProductCount + curatedImageCount);
   assert.equal(demoProducts.filter(row => row.imagem === null).length, pendingManualImageCount);
   assert.ok(demoProducts.filter(row => row.imagem !== null).every(row => row.imagem.startsWith('https://')));
-  assert.ok(demoProducts.filter(row => row.chave.startsWith('setores-')).every(row => row.imagem === null));
+  assert.deepEqual(demoProducts.filter(row => row.imagem === null).map(row => row.chave), []);
   assert.equal(demoProducts.find(row => row.nome === 'Pão de Forma Visconti').imagem, 'https://i.imgur.com/Nyoak5f.jpg');
   assert.equal(demoProducts.find(row => row.nome === 'Vodka Smirnoff Red').alcoolico, true);
 });
@@ -262,7 +263,7 @@ test('migrate e seed repetíveis: IDs preservados, sem duplicação ou perda de 
   await seed(postgres.db);
   assert.deepEqual(await postgres.db.any('SELECT id, demo_chave FROM produtos ORDER BY id'), before);
   assert.deepEqual(await postgres.db.any('SELECT id, nome FROM categorias ORDER BY id'), categoriesBefore);
-  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 6);
+  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 8);
 });
 
 test('migração importa banco legado sem apagar originais nem perder chaves', async () => {

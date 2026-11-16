@@ -26,3 +26,7 @@ As fichas abaixo são a fonte de verdade das fronteiras do escopo E1-E12. Os flu
 | CT20 | [transcreverAudio](CT20-transcreverAudio.md) | API SAFRA -> OpenAI | E11 |
 | CT21 | [interpretarPedido](CT21-interpretarPedido.md) | API SAFRA -> OpenAI | E11 |
 | CT22 | [listarOfertasDemonstrativas](CT22-listarOfertasDemonstrativas.md) | Frontend -> API SAFRA | E12 |
+| CT24 | [listarHistoricoCompras](CT24-listarHistoricoCompras.md) | Frontend -> API SAFRA -> Serviço Java | Histórico |
+| CT25 | [repetirCompra](CT25-repetirCompra.md) | Frontend -> API SAFRA -> Serviço Java | Histórico |
+| CT26 | [validarCupom](CT26-validarCupom.md) | Frontend -> API SAFRA -> Serviço Java | E8, E9 |
+| CT27 | [cupons](CT27-cupons.md) | Serviço Java -> PostgreSQL | E8, E9 |

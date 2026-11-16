@@ -25,6 +25,9 @@
 | total | decimal | sim | `14.00` | Soma dos subtotais. |
 | podeConfirmar | booleano | sim | `true` | `false` quando o carrinho está vazio ou fechado. |
 
+O resumo não aplica cupom: o desconto é calculado pelo serviço Java em [CT26](CT26-validarCupom.md) (exibição)
+e novamente em [CT16](CT16-gerarConfirmacaoDemonstrativa.md) (decisão final). `total` aqui é o subtotal dos itens.
+
 ## Erros
 
 | Código | Quando acontece | Resposta ao chamador |

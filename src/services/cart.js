@@ -16,11 +16,14 @@ const closed = () => new ApiError(409, 'carrinhoFechado', 'O carrinho não pode 
 const DEMO_MESSAGE = 'Compra demonstrativa concluída. Nenhuma cobrança foi realizada.';
 
 export default class Cart {
-  constructor(db, carts, confirmar, validarIdade = async () => {}) {
+  constructor(db, carts, confirmar, validarIdade = async () => {}, validarCupom = async () => {
+    throw new ApiError(503, 'servicoValidacaoIndisponivel', 'O serviço de validação está indisponível. Tente novamente.');
+  }) {
     this.db = db;
     this.carts = carts;
     this.confirmar = confirmar;
     this.validarIdade = validarIdade;
+    this.validarCupom = validarCupom;
   }
 
   // CT8 adicionarItemAoCarrinho (OP#588): cria o carrinho de visitante quando necessário e
@@ -120,11 +123,35 @@ export default class Cart {
     };
   }
 
+  // CT26 validarCupom: o Node só confere o carrinho e repassa ao serviço Java, que lê o subtotal no banco,
+  // valida conta, primeira compra e código (sensível a maiúsculas) e devolve desconto e total final.
+  async validateCoupon({ carrinhoId, codigo, usuario }) {
+    const cart = await this.carts.find(this.db, carrinhoId);
+    if (!cart) throw new ApiError(404, 'carrinhoNaoEncontrado', 'Carrinho não encontrado.');
+    if (cart.status !== 'aberto' || (cart.usuario_id && cart.usuario_id !== usuario.id)) {
+      throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode receber cupom.');
+    }
+    const rows = await this.carts.items(this.db, carrinhoId);
+    if (!rows.length || rows.some(row => !row.disponivel)) {
+      throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode receber cupom.');
+    }
+    const result = await this.validarCupom({ usuarioId: usuario.id, carrinhoId, codigo });
+    return {
+      cupom: result.codigo,
+      subtotal: money(result.subtotal),
+      desconto: money(result.desconto),
+      total: money(result.total),
+      mensagem: result.mensagem || 'Cupom aplicado.',
+    };
+  }
+
   // CT15 confirmarCompraDemonstrativa (OP#600): relê e trava o carrinho, envia ao Serviço de Confirmação
   // (CT16) os mesmos valores do resumo e marca o carrinho como confirmado (CT9) após a gravação da compra.
   // O bloqueio FOR NO KEY UPDATE impede alterações no carrinho e é compatível com a chave estrangeira gravada
   // pelo serviço Java. Uma nova tentativa com a mesma chave devolve a compra original, sem duplicá-la.
-  confirm({ carrinhoId, chaveIdempotencia, metodoPagamento, usuario }) {
+  // O cupom opcional é revalidado pelo Java dentro da transação de confirmação; subtotal, desconto e total
+  // final da resposta são os valores gravados pelo Java, nunca calculados aqui nem recebidos do aplicativo.
+  confirm({ carrinhoId, chaveIdempotencia, metodoPagamento, cupom = null, usuario }) {
     return this.db.tx(async t => {
       const cart = await this.carts.lock(t, carrinhoId);
       if (!cart) throw new ApiError(404, 'carrinhoNaoEncontrado', 'Carrinho não encontrado.');
@@ -136,7 +163,7 @@ export default class Cart {
         throw new ApiError(409, 'confirmacaoNaoPermitida', 'O carrinho não pode ser confirmado.');
       }
       const itens = rows.map(item);
-      const total = money(await this.carts.total(t, carrinhoId));
+      const subtotal = money(await this.carts.total(t, carrinhoId));
       await this.carts.bindUser(t, carrinhoId, usuario.id);
       const compra = await this.confirmar({
         referencia: chaveIdempotencia,
@@ -144,9 +171,13 @@ export default class Cart {
         usuarioId: usuario.id,
         metodoPagamento,
         quantidadeItens: itens.reduce((sum, row) => sum + row.quantidade, 0),
-        total,
+        subtotal,
+        cupom,
         itens,
       });
+      if (compra.total === undefined || compra.total === null) {
+        throw new ApiError(503, 'servicoValidacaoIndisponivel', 'O serviço de validação está indisponível. Tente novamente.');
+      }
       await this.carts.confirm(t, carrinhoId);
       return {
         criada: compra.criada,
@@ -155,7 +186,10 @@ export default class Cart {
           confirmacaoId: compra.confirmacaoId,
           status: 'concluida_demonstrativa',
           itens,
-          total,
+          subtotal: money(compra.subtotal),
+          cupom: compra.cupom ?? null,
+          desconto: money(compra.desconto),
+          total: money(compra.total),
           metodoPagamento,
           usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email },
           mensagem: DEMO_MESSAGE,

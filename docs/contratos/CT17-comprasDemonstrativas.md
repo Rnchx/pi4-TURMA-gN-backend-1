@@ -16,7 +16,12 @@ Os campos gravados são os mesmos campos lidos.
 | chave_idempotencia | texto | sim | `confirmacao-9f3819dd-8e95-4fd5-a735-6ca8b80de8ad` | Valor único. |
 | confirmacao_id | texto | sim | `SAFRA-DEMO-6278CDDD` | Valor retornado por CT16. |
 | status | um de: concluida_demonstrativa | sim | `concluida_demonstrativa` | Único estado desta entrega. |
-| total | decimal | sim | `14.00` | Total confirmado. |
+| usuario_id | texto | não | `4be6b563-...` | Conta que confirmou (nulo após exclusão da conta). |
+| metodo_pagamento | texto | sim | `pix` | Método demonstrativo. |
+| subtotal | decimal | sim | `14.00` | Soma dos itens. Compras anteriores à v1.4 receberam `subtotal = total`. |
+| cupom_codigo | texto ou nulo | não | `PRIMEIRA40` | FK para `cupons(codigo)`; nulo sem cupom. |
+| desconto | decimal | sim | `14.00` | `0` sem cupom; `0 <= desconto <= subtotal`. |
+| total | decimal | sim | `0.00` | Total final: `total = subtotal - desconto` (`compras_valores_cupom_check`). |
 | criada_em | data-hora | sim | `2026-10-12T19:00:00Z` | Momento da criação. |
 
 ## Saída
@@ -29,5 +34,6 @@ Os campos lidos são os mesmos campos da entrada.
 | --- | --- | --- |
 | unique_violation | Carrinho, chave ou confirmação já registrados. | Devolver a compra original quando os dados forem iguais. |
 | foreign_key_violation | Carrinho não existe. | Reverter a transação. |
-| check_violation | Total negativo ou status inválido. | Reverter a transação. |
+| check_violation | Valor negativo, desconto maior que o subtotal, total incoerente, desconto sem cupom ou status inválido. | Reverter a transação. |
+| unique_violation (`compras_primeira40_por_usuario`) | Segundo uso de `PRIMEIRA40` pela mesma conta. | Reverter e responder `cupomJaUtilizado`. |
 | connection_error | Banco indisponível. | O serviço Java reverte a transação e devolve erro em CT16. |

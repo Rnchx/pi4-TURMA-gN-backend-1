@@ -13,7 +13,7 @@
 
   <groupId>br.com.safra</groupId>
   <artifactId>confirmacao-java</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <name>SAFRA Confirmação</name>
   <description>Serviço de Confirmação do SAFRA Online (ADR 0004/0005, CT16–CT18).</description>
 

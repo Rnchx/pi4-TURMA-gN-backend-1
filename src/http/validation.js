@@ -89,14 +89,43 @@ export function quantityBody(params, body) {
   };
 }
 
-// CT15: chave de idempotência gerada pelo aplicativo e reutilizada nas novas tentativas.
+// Formato do código de cupom. A existência, as regras e a diferença entre maiúsculas e minúsculas
+// são decididas pelo serviço Java; aqui só se recusa entrada malformada.
+const COUPON = /^[A-Za-z0-9]{1,30}$/;
+
+// CT15: chave de idempotência gerada pelo aplicativo e reutilizada nas novas tentativas; cupom opcional.
+// Subtotal, desconto e total nunca são aceitos do aplicativo (campos extras são recusados).
 export function confirmationBody(params, body) {
   const invalid = () => new ApiError(400, 'entradaInvalida', 'Revise os dados da confirmação.');
   if (!body || typeof body !== 'object' || Array.isArray(body)
-    || Object.keys(body).some(key => !['chaveIdempotencia', 'metodoPagamento'].includes(key))) throw invalid();
+    || Object.keys(body).some(key => !['chaveIdempotencia', 'metodoPagamento', 'cupom'].includes(key))) throw invalid();
   const key = body.chaveIdempotencia;
   if (typeof key !== 'string' || !/^[A-Za-z0-9._:-]{8,100}$/.test(key)) throw invalid();
   if (!['pix', 'credito', 'debito', 'boleto'].includes(body.metodoPagamento)) throw invalid();
+  const cupom = body.cupom ?? null;
+  if (cupom !== null && (typeof cupom !== 'string' || !COUPON.test(cupom))) throw invalid();
   return { carrinhoId: uuid(params.carrinhoId, 'entradaInvalida', 'Revise os dados da confirmação.'),
-    chaveIdempotencia: key, metodoPagamento: body.metodoPagamento };
+    chaveIdempotencia: key, metodoPagamento: body.metodoPagamento, cupom };
+}
+
+// CT26: { codigo }. Espaços nas pontas são ignorados; o restante segue exatamente como digitado.
+export function couponBody(params, body) {
+  const invalid = () => new ApiError(400, 'cupomInvalido', 'Cupom inválido.');
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'codigo')) throw invalid();
+  const codigo = typeof body.codigo === 'string' ? body.codigo.trim() : '';
+  if (!COUPON.test(codigo)) throw invalid();
+  return { carrinhoId: uuid(params.carrinhoId, 'carrinhoIdInvalido', 'Informe um carrinho válido.'), codigo };
+}
+
+// CT25: carrinhoId opcional (o carrinho aberto atual); a compra vem da rota.
+export function repeatBody(params, body) {
+  const invalid = () => new ApiError(400, 'entradaInvalida', 'Revise os dados da solicitação.');
+  const data = body ?? {};
+  if (typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => key !== 'carrinhoId')) throw invalid();
+  const carrinhoId = data.carrinhoId ?? null;
+  if (carrinhoId !== null && (typeof carrinhoId !== 'string' || !UUID.test(carrinhoId))) throw invalid();
+  return {
+    compraId: uuid(params.compraId, 'compraNaoEncontrada', 'Compra não encontrada.'),
+    carrinhoId: carrinhoId ? carrinhoId.toLowerCase() : null,
+  };
 }

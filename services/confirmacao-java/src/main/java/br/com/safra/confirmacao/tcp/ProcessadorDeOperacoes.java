@@ -3,10 +3,13 @@ package br.com.safra.confirmacao.tcp;
 import br.com.safra.confirmacao.confirmacao.ConfirmacaoException;
 import br.com.safra.confirmacao.confirmacao.ConfirmacaoRequest;
 import br.com.safra.confirmacao.confirmacao.ConfirmacaoService;
+import br.com.safra.confirmacao.cupom.CupomService;
+import br.com.safra.confirmacao.historico.HistoricoService;
 import br.com.safra.confirmacao.usuario.OperacaoException;
 import br.com.safra.confirmacao.usuario.RestricaoEtariaService;
 import br.com.safra.confirmacao.usuario.UsuarioService;
 import tools.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,14 +25,18 @@ public class ProcessadorDeOperacoes {
     private final UsuarioService usuarios;
     private final RestricaoEtariaService restricoes;
     private final ConfirmacaoService confirmacoes;
+    private final CupomService cupons;
+    private final HistoricoService historico;
     private final JdbcTemplate jdbc;
 
     public ProcessadorDeOperacoes(ObjectMapper json, UsuarioService usuarios, RestricaoEtariaService restricoes,
-            ConfirmacaoService confirmacoes, JdbcTemplate jdbc) {
+            ConfirmacaoService confirmacoes, CupomService cupons, HistoricoService historico, JdbcTemplate jdbc) {
         this.json = json;
         this.usuarios = usuarios;
         this.restricoes = restricoes;
         this.confirmacoes = confirmacoes;
+        this.cupons = cupons;
+        this.historico = historico;
         this.jdbc = jdbc;
     }
 
@@ -51,11 +58,24 @@ public class ProcessadorDeOperacoes {
                 case "validarRestricaoEtaria" -> restricoes.validar(converter(pedido, RestricaoEtariaService.Validacao.class));
                 case "confirmarCompra" -> {
                     var resultado = confirmacoes.confirmar(converter(pedido, ConfirmacaoRequest.class));
-                    yield Map.of("confirmacaoId", resultado.resposta().confirmacaoId(),
-                            "compraId", resultado.resposta().compraId(), "metodoPagamento", resultado.resposta().metodoPagamento(),
-                            "mensagem", resultado.resposta().mensagem(), "geradaEm", resultado.resposta().geradaEm(),
-                            "criada", resultado.criada());
+                    var resposta = resultado.resposta();
+                    // LinkedHashMap: o cupom pode ser null (Map.of não aceita valores nulos).
+                    Map<String, Object> saida = new LinkedHashMap<>();
+                    saida.put("confirmacaoId", resposta.confirmacaoId());
+                    saida.put("compraId", resposta.compraId());
+                    saida.put("metodoPagamento", resposta.metodoPagamento());
+                    saida.put("mensagem", resposta.mensagem());
+                    saida.put("geradaEm", resposta.geradaEm());
+                    saida.put("subtotal", resposta.subtotal());
+                    saida.put("cupom", resposta.cupom());
+                    saida.put("desconto", resposta.desconto());
+                    saida.put("total", resposta.total());
+                    saida.put("criada", resultado.criada());
+                    yield saida;
                 }
+                case "validarCupom" -> cupons.validar(converter(pedido, CupomService.Validacao.class));
+                case "listarHistoricoCompras" -> historico.listar(converter(pedido, HistoricoService.Listagem.class));
+                case "consultarCompra" -> historico.consultar(converter(pedido, HistoricoService.Consulta.class));
                 default -> throw new OperacaoException("operacaoInvalida", "Operação não suportada.");
             };
             return PedidoDeResultado.sucesso(id, dados);

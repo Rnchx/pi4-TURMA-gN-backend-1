@@ -54,8 +54,10 @@ beforeEach(() => {
     if (existing) return existing.carrinhoId === body.carrinhoId ? [200, existing.compra] : conflict;
     if ([...compras.values()].some(c => c.carrinhoId === body.carrinhoId)) return conflict;
     const compraId = randomUUID();
+    // O Java real calcula desconto e total; aqui o simulado devolve a compra sem cupom.
     const created = { confirmacaoId: `SAFRA-DEMO-${compraId.slice(0, 8).toUpperCase()}`, compraId,
-      mensagem: 'Compra demonstrativa concluída.', geradaEm: '2026-11-05T12:00:00Z' };
+      mensagem: 'Compra demonstrativa concluída.', geradaEm: '2026-11-05T12:00:00Z',
+      subtotal: body.subtotal, cupom: body.cupom, desconto: 0, total: body.subtotal };
     compras.set(body.referencia, { carrinhoId: body.carrinhoId, compra: created });
     return [201, created];
   };
@@ -76,11 +78,15 @@ test('CT15 (OP#600/OP#603): confirma, envia ao Java os valores do resumo e fecha
   const key = `confirmacao-${randomUUID()}`;
   const body = await confirm(carrinhoId, key, 201);
   assert.deepEqual(calls.map(c => c.operacao), ['confirmarCompra']);
-  assert.deepEqual(calls[0].body, { referencia: key, carrinhoId, usuarioId, metodoPagamento: 'pix', quantidadeItens: 3, total: 14, itens: summary.itens });
+  assert.deepEqual(calls[0].body, { referencia: key, carrinhoId, usuarioId, metodoPagamento: 'pix', quantidadeItens: 3, subtotal: 14,
+    cupom: null, itens: summary.itens });
   assert.equal(body.status, 'concluida_demonstrativa');
   assert.match(body.confirmacaoId, /^SAFRA-DEMO-[0-9A-F]{8}$/);
   assert.deepEqual(body.itens, summary.itens);
   assert.equal(body.total, summary.total);
+  assert.equal(body.subtotal, summary.total);
+  assert.equal(body.desconto, 0);
+  assert.equal(body.cupom, null);
   assert.equal(body.metodoPagamento, 'pix');
   assert.equal(body.mensagem, 'Compra demonstrativa concluída. Nenhuma cobrança foi realizada.');
   assert.equal(body.criadaEm, '2026-11-05T12:00:00Z');
@@ -168,6 +174,43 @@ test('CT15: Java indisponível, lento ou sem banco responde 503; erro interno do
     .set('Authorization', `Bearer ${token}`).send({ chaveIdempotencia: `confirmacao-${randomUUID()}`, metodoPagamento: 'pix' }).expect(503)).body,
     { codigo: 'servicoValidacaoIndisponivel', mensagem: 'O serviço de validação está indisponível. Tente novamente.' });
   assert.equal((await api.get(`/carrinhos/${carrinhoId}`)).body.status, 'aberto');
+});
+
+test('CT15/CT26: cupom segue para o Java e a resposta usa subtotal, desconto e total calculados por ele', async () => {
+  const carrinhoId = await cartE7();
+  respond = body => [201, { confirmacaoId: 'SAFRA-DEMO-0000CAFE', compraId: randomUUID(), mensagem: 'Compra demonstrativa concluída.',
+    geradaEm: '2026-11-05T12:00:00Z', subtotal: body.subtotal, cupom: body.cupom, desconto: 14, total: 0 }];
+  const body = (await api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`).set('Authorization', `Bearer ${token}`)
+    .send({ chaveIdempotencia: `confirmacao-${randomUUID()}`, metodoPagamento: 'pix', cupom: 'QUERO100' }).expect(201)).body;
+  assert.equal(calls[0].body.cupom, 'QUERO100');
+  assert.equal(calls[0].body.subtotal, 14);
+  assert.deepEqual([body.subtotal, body.cupom, body.desconto, body.total], [14, 'QUERO100', 14, 0]);
+});
+
+test('CT15: o aplicativo não pode enviar subtotal, desconto ou total; cupom malformado é recusado', async () => {
+  const carrinhoId = await cartE7();
+  for (const extra of [{ total: 0 }, { desconto: 100 }, { subtotal: 1 }, { cupom: 'QUERO 100' }, { cupom: 123 }, { cupom: '' }]) {
+    await api.post(`/carrinhos/${carrinhoId}/confirmacao-demonstrativa`).set('Authorization', `Bearer ${token}`)
+      .send({ chaveIdempotencia: `confirmacao-${randomUUID()}`, metodoPagamento: 'pix', ...extra }).expect(400);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('CT26: validação de cupom exige sessão, confere o carrinho e repassa ao Java somente usuário, carrinho e código', async () => {
+  const carrinhoId = await cartE7();
+  respond = () => [200, { codigo: 'PRIMEIRA40', subtotal: 14, desconto: 14, total: 0, mensagem: 'Cupom aplicado.' }];
+  await api.post(`/carrinhos/${carrinhoId}/cupom`).send({ codigo: 'PRIMEIRA40' }).expect(401);
+  const body = (await api.post(`/carrinhos/${carrinhoId}/cupom`).set('Authorization', `Bearer ${token}`)
+    .send({ codigo: '  PRIMEIRA40 ' }).expect(200)).body;
+  assert.deepEqual(calls.map(c => c.operacao), ['validarCupom']);
+  assert.deepEqual(calls[0].body, { usuarioId, carrinhoId, codigo: 'PRIMEIRA40' });
+  assert.deepEqual(body, { cupom: 'PRIMEIRA40', subtotal: 14, desconto: 14, total: 0, mensagem: 'Cupom aplicado.' });
+  for (const codigo of ['', 'com espaço', 'x'.repeat(31), 42]) {
+    assert.equal((await api.post(`/carrinhos/${carrinhoId}/cupom`).set('Authorization', `Bearer ${token}`)
+      .send({ codigo }).expect(400)).body.codigo, 'cupomInvalido');
+  }
+  await api.post(`/carrinhos/${randomUUID()}/cupom`).set('Authorization', `Bearer ${token}`).send({ codigo: 'QUERO100' }).expect(404);
+  assert.equal(calls.length, 1);
 });
 
 test('configuração TCP valida porta, limites e duração da sessão', () => {
