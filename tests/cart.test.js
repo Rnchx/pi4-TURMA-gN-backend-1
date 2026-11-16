@@ -10,7 +10,7 @@ let postgres, api, pao, leite, decimo;
 const missingCart = '0c9d92c6-6939-4a33-9132-2dd75fe512ad';
 
 async function product(nome, preco) {
-  const sub = await postgres.db.one("SELECT s.* FROM subcategorias s JOIN categorias c ON c.id=s.categoria_id WHERE c.nome='Padaria' ORDER BY s.id LIMIT 1");
+  const sub = await postgres.db.one("SELECT s.* FROM subcategorias s JOIN categorias c ON c.id=s.categoria_id WHERE c.nome='Padaria e Confeitaria' ORDER BY s.id LIMIT 1");
   return (await api.post('/produtos').send({ nome, preco, descricao: 'Produto do cenário', imagemUrl: 'https://example.com/p.png',
     categoriaId: sub.categoria_id, subcategoriaId: sub.id }).expect(201)).body;
 }

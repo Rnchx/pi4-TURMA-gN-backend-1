@@ -32,7 +32,7 @@ before(async () => {
   await postgres.db.none(`INSERT INTO usuarios(id,nome,cpf,email,senha_hash) VALUES($1,'Maria da Silva','52998224725',$2,'$argon2id$teste')`, [usuarioId, `maria.${usuarioId}@gmail.com`]);
   await postgres.db.none(`INSERT INTO sessoes(id,usuario_id,token_hash,expira_em) VALUES($1,$2,$3,now()+interval '1 hour')`,
     [randomUUID(), usuarioId, createHash('sha256').update(token).digest('hex')]);
-  const sub = await postgres.db.one("SELECT s.* FROM subcategorias s JOIN categorias c ON c.id=s.categoria_id WHERE c.nome='Padaria' ORDER BY s.id LIMIT 1");
+  const sub = await postgres.db.one("SELECT s.* FROM subcategorias s JOIN categorias c ON c.id=s.categoria_id WHERE c.nome='Padaria e Confeitaria' ORDER BY s.id LIMIT 1");
   const make = (nome, preco) => api.post('/produtos').send({ nome, preco, descricao: 'Cenário', imagemUrl: 'https://example.com/p.png',
     categoriaId: sub.categoria_id, subcategoriaId: sub.id }).expect(201).then(r => r.body);
   pao = await make('Pão do checkout', '5.50');

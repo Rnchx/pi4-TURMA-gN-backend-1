@@ -22,7 +22,7 @@ before(async () => {
   assert.equal(await postgres.db.oneOrNone("SELECT to_regclass('produtos') AS tabela").then(r => r.tabela), null);
   await migrate(postgres.db);
   await seed(postgres.db);
-  category = await postgres.db.one("SELECT * FROM categorias WHERE nome = 'Padaria'");
+  category = await postgres.db.one("SELECT * FROM categorias WHERE nome = 'Padaria e Confeitaria'");
   subcategory = await postgres.db.one('SELECT * FROM subcategorias WHERE categoria_id=$1 ORDER BY id LIMIT 1', [category.id]);
   sample = await postgres.db.one('SELECT * FROM produtos WHERE categoria_id=$1 ORDER BY id LIMIT 1', [category.id]);
 }, { timeout: 60000 });
@@ -61,6 +61,34 @@ test('H01.3 (OP#577): carga demonstrativa tem ≥ 20 produtos, ≥ 4 categorias 
   assert.deepEqual([pao.preco, pao.precoAnterior], [6.99, 8.49]);
   const detail = (await api.get(`/produtos/${pao.produtoId}`).expect(200)).body;
   assert.deepEqual([detail.emOferta, detail.precoAnterior], [true, 8.49]);
+});
+
+test('catálogo demonstrativo expõe os 10 setores completos sem duplicar as chaves do seed', async () => {
+  const expected = [
+    'Hortifrúti', 'Açougue e Peixaria', 'Padaria e Confeitaria', 'Frios e Laticínios', 'Mercearia',
+    'Bebidas', 'Congelados', 'Higiene e Limpeza', 'Utensílios Domésticos e Bazar', 'Pet Shop',
+  ];
+  const classification = (await api.get('/categorias').expect(200)).body.categorias;
+  assert.deepEqual(classification.map(row => row.nome).sort(), [...expected].sort());
+  for (const categoryRow of classification) {
+    const products = (await api.get(`/categorias/${categoryRow.categoriaId}/produtos`).expect(200)).body.produtos;
+    assert.ok(products.length >= 6, `${categoryRow.nome} deveria ter ao menos 6 produtos`);
+  }
+  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM produtos WHERE demo_chave IS NOT NULL')).count),
+    Number((await postgres.db.one('SELECT count(DISTINCT demo_chave) FROM produtos WHERE demo_chave IS NOT NULL')).count));
+});
+
+test('bebidas alcoólicas possuem marcador explícito e idade mínima coerente', async () => {
+  const products = (await api.get('/produtos').expect(200)).body.produtos;
+  const alcoholic = products.filter(row => row.alcoolico);
+  assert.ok(alcoholic.length >= 2);
+  assert.ok(alcoholic.some(row => row.nome.includes('Cerveja')));
+  assert.ok(alcoholic.some(row => row.nome.includes('Vinho')));
+  assert.ok(alcoholic.every(row => row.idadeMinima === 18));
+  assert.ok(products.filter(row => !row.alcoolico).every(row => row.idadeMinima === 0));
+  await assert.rejects(
+    postgres.db.none(`UPDATE produtos SET alcoolico=true, idade_minima=0 WHERE id=$1`, [sample.id]),
+  );
 });
 
 test('CT3: classificação contém categorias e subcategorias pertencentes à categoria', async () => {
@@ -212,7 +240,7 @@ test('migrate e seed repetíveis: IDs preservados, sem duplicação ou perda de 
   await seed(postgres.db);
   assert.deepEqual(await postgres.db.any('SELECT id, demo_chave FROM produtos ORDER BY id'), before);
   assert.deepEqual(await postgres.db.any('SELECT id, nome FROM categorias ORDER BY id'), categoriesBefore);
-  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 2);
+  assert.equal(Number((await postgres.db.one('SELECT count(*) FROM schema_migrations')).count), 5);
 });
 
 test('migração importa banco legado sem apagar originais nem perder chaves', async () => {
@@ -277,7 +305,7 @@ test('banco realmente desligado: HTTP vivo, readiness 503 e consultas 500 saniti
 });
 
 test('configuração inválida encerra inicialização com erro controlado, sem stack trace', async () => {
-  const child = spawn(process.execPath, ['--unhandled-rejections=strict', 'src/server.js'], {
+  const child = spawn(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--unhandled-rejections=strict', 'src/server.js'], {
     env: { ...process.env, PORT: '0', DB_HOST: '127.0.0.1', DB_PORT: '1' },
     windowsHide: true,
   });
@@ -296,7 +324,7 @@ test('servidor inicia com banco desligado, mantém HTTP vivo e trata a rejeiçã
   await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
   const port = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
-  const child = spawn(process.execPath, ['--unhandled-rejections=strict', 'src/server.js'], {
+  const child = spawn(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--unhandled-rejections=strict', 'src/server.js'], {
     env: { ...process.env, PORT: String(port), DB_HOST: '127.0.0.1', DB_PORT: '1' }, windowsHide: true,
   });
   let output = '';
@@ -328,7 +356,7 @@ test('CT22 (OP#610): ofertas ativas com preço anterior maior, aviso fixo e orde
   const economia = body.ofertas.map(o => Math.round((o.precoAnterior - o.preco) * 100));
   assert.deepEqual(economia, [...economia].sort((a, b) => b - a));
   for (const oferta of body.ofertas) {
-    assert.deepEqual(Object.keys(oferta).sort(), ['emOferta', 'imagemUrl', 'nome', 'precoAnterior', 'preco', 'produtoId'].sort());
+    assert.deepEqual(Object.keys(oferta).sort(), ['alcoolico', 'emOferta', 'idadeMinima', 'imagemUrl', 'nome', 'precoAnterior', 'preco', 'produtoId'].sort());
     assert.equal(oferta.emOferta, true);
     assert.ok(oferta.precoAnterior > oferta.preco);
   }

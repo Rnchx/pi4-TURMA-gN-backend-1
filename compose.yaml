@@ -63,7 +63,7 @@ services:
   api:
     build:
       context: .
-    image: safra/api:1.1.0
+    image: safra/api:1.2.0
     environment:
       NODE_ENV: ${API_NODE_ENV:-development}
       PORT: 4000

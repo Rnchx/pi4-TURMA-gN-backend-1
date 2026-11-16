@@ -1,6 +1,6 @@
 // Dados demonstrativos reutilizados do SQL legado; sem validade comercial.
 // "precoAnterior" marca as ofertas demonstrativas (E12, CT22): sempre maior que "preco", sem mercado externo.
-export const demoProducts = [
+const legacyProducts = [
   {"chave":"ciclo2-1-1","categoria":"Padaria","tipo":"paes","nome":"Pao De Forma Visconti","preco":6.99,"descricao":"400g Tradicional","imagem":"https://i.imgur.com/Nyoak5f.jpg","precoAnterior":8.49},
   {"chave":"ciclo2-1-2","categoria":"Padaria","tipo":"paes","nome":"Pao de forma bauducco","preco":10.29,"descricao":"390g tradicional","imagem":"https://i.imgur.com/6EH6YEl.jpg"},
   {"chave":"ciclo2-1-3","categoria":"Padaria","tipo":"paes","nome":"Pao Hamburguer Bauducco","preco":11.99,"descricao":"200g","imagem":"https://i.imgur.com/sBARXHV.jpg"},
@@ -49,7 +49,7 @@ export const demoProducts = [
   {"chave":"ciclo2-3-10","categoria":"Horti-Fruit","tipo":"frutas","nome":"Maca Gala Vermelha","preco":13.99,"descricao":"Por Kg","imagem":"https://i.imgur.com/7g74Bbe.jpg"},
   {"chave":"ciclo2-4-9","categoria":"Bebidas","tipo":"aguas","nome":"agua Mineral Crystal Sem Gas","preco":2,"descricao":"500ml","imagem":"https://i.imgur.com/wZcndcF.jpg"},
   {"chave":"ciclo2-4-10","categoria":"Bebidas","tipo":"aguas","nome":"agua Prata Sem Gas","preco":2.7,"descricao":"510ml","imagem":"https://i.imgur.com/TlYh9MW.png"},
-  {"chave":"ciclo4-alcool-1","categoria":"Bebidas","tipo":"alcoolicas","nome":"Cerveja Pilsen Demonstrativa","preco":6.99,"descricao":"350ml - venda simulada para maiores de 18 anos","imagem":"https://i.imgur.com/3RBrS9D.png","idadeMinima":18},
+  {"chave":"ciclo4-alcool-1","categoria":"Bebidas","tipo":"alcoolicas","nome":"Cerveja Pilsen Demonstrativa","preco":6.99,"descricao":"350ml - venda simulada para maiores de 18 anos","imagem":"https://i.imgur.com/3RBrS9D.png","idadeMinima":18,"alcoolico":true},
   {"chave":"ciclo2-5-1","categoria":"Limpeza","tipo":"corpo","nome":"Sabonete Dove Erva Doce","preco":4.1,"descricao":"90g Unidade","imagem":"https://i.imgur.com/jM9VWU2.png","precoAnterior":5.29},
   {"chave":"ciclo2-5-2","categoria":"Limpeza","tipo":"corpo","nome":"Desodorante Aerosol Nivea Protect&Care","preco":16.8,"descricao":"150g","imagem":"https://i.imgur.com/zxzX7kd.jpg"},
   {"chave":"ciclo2-5-3","categoria":"Limpeza","tipo":"corpo","nome":"Protetor Solar Facial Nivea","preco":34.9,"descricao":"40ml FPS 30 Toque Seco Antissinais","imagem":"https://i.imgur.com/ciDR1y4.jpg"},
@@ -61,3 +61,128 @@ export const demoProducts = [
   {"chave":"ciclo2-5-9","categoria":"Limpeza","tipo":"cabelos","nome":"Ativador de Cachos Salon Line","preco":18.99,"descricao":"300ml SOS Cachos Nutritivo","imagem":"https://i.imgur.com/9ZnQrw1.jpg"},
   {"chave":"ciclo2-5-10","categoria":"Limpeza","tipo":"cabelos","nome":"Gel Fixador Nylooks","preco":9.99,"descricao":"240g Fator 1","imagem":"https://i.imgur.com/lVVpP9U.jpg"},
 ];
+
+// URLs consultadas na API pública do Wikimedia e mantidas explícitas para permitir auditoria.
+// O fallback do aplicativo cobre indisponibilidade temporária do host externo.
+const wiki = {
+  alface: "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/da/Iceberg_lettuce_in_SB.jpg/330px-Iceberg_lettuce_in_SB.jpg",
+  tilapia: "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b3/Oreochromis-niloticus-Nairobi.JPG/330px-Oreochromis-niloticus-Nairobi.JPG",
+  salmao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/Salmon_Fillet_%2830910417061%29.jpg/960px-Salmon_Fillet_%2830910417061%29.jpg",
+  camarao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Frozen_cooked_shrimp_%2820240124%29.jpg/960px-Frozen_cooked_shrimp_%2820240124%29.jpg",
+  arroz: "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Ceramic_bowl_full_of_white_rice.jpg/960px-Ceramic_bowl_full_of_white_rice.jpg",
+  feijao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3f/Pinto_Beans_Seeds.jpg/330px-Pinto_Beans_Seeds.jpg",
+  acucar: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/Bowl_of_white_sugar_without_background.jpg/960px-Bowl_of_white_sugar_without_background.jpg",
+  oleo: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/ff/Soybean_Oil_%2810059657806%29.jpg/330px-Soybean_Oil_%2810059657806%29.jpg",
+  cafe: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/Latte_and_dark_coffee.jpg/330px-Latte_and_dark_coffee.jpg",
+  macarrao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Spaghetti_pasta_as_food.jpg/960px-Spaghetti_pasta_as_food.jpg",
+  molho: "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/52/Fresh_Tomato_Sauce_%28Unsplash%29.jpg/330px-Fresh_Tomato_Sauce_%28Unsplash%29.jpg",
+  farinha: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Soy_powder.jpg/330px-Soy_powder.jpg",
+  aguaGas: "https://upload.wikimedia.org/wikipedia/commons/5/59/Drinking_glass_00118.gif",
+  cola: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Glass_of_Cola.jpg/330px-Glass_of_Cola.jpg",
+  guarana: "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/Guarana-antarctica_2020.svg/330px-Guarana-antarctica_2020.svg.png",
+  suco: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/05/Orangejuice.jpg/330px-Orangejuice.jpg",
+  energetico: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Energy_Drink_Display.jpg/330px-Energy_Drink_Display.jpg",
+  vinho: "https://thumb.wikimedia.org/wikipedia/en/thumb/c/c0/Red_Wine_Glass.jpg/330px-Red_Wine_Glass.jpg",
+  pizza: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/49/Tk_pizza.jpg/330px-Tk_pizza.jpg",
+  lasanha: "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/Lasagne_-_stonesoup.jpg/330px-Lasagne_-_stonesoup.jpg",
+  hamburguer: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0b/RedDot_Burger.jpg/330px-RedDot_Burger.jpg",
+  acai: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6d/A%C3%A7a%C3%AD_do_Par%C3%A1.jpg/330px-A%C3%A7a%C3%AD_do_Par%C3%A1.jpg",
+  fritas: "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/83/French_Fries.JPG/330px-French_Fries.JPG",
+  nuggets: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/64/Chicken_Nuggets.jpg/330px-Chicken_Nuggets.jpg",
+  frutasCongeladas: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/Frozen_berries_%2835379207760%29.jpg/330px-Frozen_berries_%2835379207760%29.jpg",
+  sorvete: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Vanilla_Ice_Cream_Cone_at_Camp_Manitoulin.jpg/330px-Vanilla_Ice_Cream_Cone_at_Camp_Manitoulin.jpg",
+  detergente: "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Afwasmiddel.jpg/330px-Afwasmiddel.jpg",
+  desinfetante: "https://upload.wikimedia.org/wikipedia/commons/4/4e/Disinfection_with_mop.jpg",
+  sabaoPo: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2a/Pralni_pra%C5%A1ek.JPG/330px-Pralni_pra%C5%A1ek.JPG",
+  pote: "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/1960s_Norwegian_Panco_Plast_Fredrikstad_plastic_kitchen_storage_container_number_192_for_dry_goods_view_3.jpg/960px-1960s_Norwegian_Panco_Plast_Fredrikstad_plastic_kitchen_storage_container_number_192_for_dry_goods_view_3.jpg",
+  copos: "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Drinkware.jpg/330px-Drinkware.jpg",
+  prato: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/07/Plate%2C_dinner_%28AM_12787-1%29.jpg/960px-Plate%2C_dinner_%28AM_12787-1%29.jpg",
+  talheres: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/66/Besteck_WMF_Stockholm_ca_1960er.jpg/330px-Besteck_WMF_Stockholm_ca_1960er.jpg",
+  pano: "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9d/Dishcloths.jpg/330px-Dishcloths.jpg",
+  esponja: "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/%C3%89ponge_type_3_%281%29.jpg/330px-%C3%89ponge_type_3_%281%29.jpg",
+  balde: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/Gotland-Bottarve_Museumshof_07.jpg/330px-Gotland-Bottarve_Museumshof_07.jpg",
+  vassoura: "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/BroomsforSale.jpg/330px-BroomsforSale.jpg",
+  racaoCao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/71/Dog_food_in_a_bowl.jpg/330px-Dog_food_in_a_bowl.jpg",
+  racaoGato: "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Gastrointestinal_Haiball_cat_dry_food_%28Royal_Canin%29.jpg/330px-Gastrointestinal_Haiball_cat_dry_food_%28Royal_Canin%29.jpg",
+  petiscoCao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/A_Dog_biscuit.jpg/330px-A_Dog_biscuit.jpg",
+  petiscoGato: "https://upload.wikimedia.org/wikipedia/commons/b/ba/Catdryfood.jpg",
+  areiaGato: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f7/Japanese_litter_box.jpg/330px-Japanese_litter_box.jpg",
+  shampooPet: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/HK_Watsons_Herbal_Hair_Shampoo.JPG/960px-HK_Watsons_Herbal_Hair_Shampoo.JPG",
+  brinquedoCao: "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5a/Dogwithtoy.jpg/330px-Dogwithtoy.jpg",
+  comedouro: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/07/Menjador_del_gat.jpg/960px-Menjador_del_gat.jpg",
+};
+
+const canonicalCategory = {
+  Padaria: "Padaria e Confeitaria",
+  Acougue: "Açougue e Peixaria",
+  "Horti-Fruit": "Hortifrúti",
+  Limpeza: "Higiene e Limpeza",
+};
+
+const legacyCatalog = legacyProducts.map((product) => {
+  let categoria = canonicalCategory[product.categoria] || product.categoria;
+  let tipo = product.tipo;
+  if (product.categoria === "Bebidas" && ["laticinios", "derivados"].includes(product.tipo)) categoria = "Frios e Laticínios";
+  if (product.categoria === "Acougue" && product.tipo === "embutidos") {
+    categoria = "Frios e Laticínios";
+    tipo = product.nome.toLowerCase().includes("queijo") ? "queijos" : "frios";
+  }
+  if (product.categoria === "Limpeza") tipo = "higiene pessoal";
+  return { ...product, categoria, tipo };
+});
+
+const newProducts = [
+  { chave: "setores-horti-alface", categoria: "Hortifrúti", tipo: "verduras", nome: "Alface Crespa", preco: 3.99, descricao: "Unidade", imagem: wiki.alface },
+  { chave: "setores-peixe-tilapia", categoria: "Açougue e Peixaria", tipo: "pescados", nome: "Filé de Tilápia", preco: 39.9, descricao: "Pacote 500g congelado", imagem: wiki.tilapia },
+  { chave: "setores-peixe-salmao", categoria: "Açougue e Peixaria", tipo: "pescados", nome: "Filé de Salmão", preco: 69.9, descricao: "Pacote 500g congelado", imagem: wiki.salmao },
+  { chave: "setores-peixe-camarao", categoria: "Açougue e Peixaria", tipo: "pescados", nome: "Camarão Congelado", preco: 54.9, descricao: "Pacote 400g limpo", imagem: wiki.camarao },
+
+  { chave: "setores-mercearia-arroz", categoria: "Mercearia", tipo: "alimentos básicos", nome: "Arroz Branco", preco: 27.9, descricao: "Pacote 5kg", imagem: wiki.arroz },
+  { chave: "setores-mercearia-feijao", categoria: "Mercearia", tipo: "alimentos básicos", nome: "Feijão Carioca", preco: 8.49, descricao: "Pacote 1kg", imagem: wiki.feijao },
+  { chave: "setores-mercearia-acucar", categoria: "Mercearia", tipo: "alimentos básicos", nome: "Açúcar Refinado", preco: 4.99, descricao: "Pacote 1kg", imagem: wiki.acucar },
+  { chave: "setores-mercearia-oleo", categoria: "Mercearia", tipo: "alimentos básicos", nome: "Óleo de Soja", preco: 7.99, descricao: "Garrafa 900ml", imagem: wiki.oleo },
+  { chave: "setores-mercearia-cafe", categoria: "Mercearia", tipo: "café", nome: "Café Torrado e Moído", preco: 18.9, descricao: "Pacote 500g", imagem: wiki.cafe },
+  { chave: "setores-mercearia-macarrao", categoria: "Mercearia", tipo: "massas", nome: "Macarrão Espaguete", preco: 5.49, descricao: "Pacote 500g", imagem: wiki.macarrao },
+  { chave: "setores-mercearia-molho", categoria: "Mercearia", tipo: "molhos", nome: "Molho de Tomate", preco: 3.49, descricao: "Sachê 300g", imagem: wiki.molho },
+  { chave: "setores-mercearia-farinha", categoria: "Mercearia", tipo: "alimentos básicos", nome: "Farinha de Trigo", preco: 6.79, descricao: "Pacote 1kg", imagem: wiki.farinha },
+
+  { chave: "setores-bebida-agua-gas", categoria: "Bebidas", tipo: "águas", nome: "Água Mineral com Gás", preco: 3.29, descricao: "Garrafa 500ml", imagem: wiki.aguaGas },
+  { chave: "setores-bebida-cola", categoria: "Bebidas", tipo: "refrigerantes", nome: "Refrigerante Cola", preco: 9.99, descricao: "Garrafa 2L", imagem: wiki.cola },
+  { chave: "setores-bebida-guarana", categoria: "Bebidas", tipo: "refrigerantes", nome: "Refrigerante Guaraná", preco: 8.99, descricao: "Garrafa 2L", imagem: wiki.guarana },
+  { chave: "setores-bebida-suco", categoria: "Bebidas", tipo: "sucos", nome: "Suco de Laranja", preco: 10.9, descricao: "Garrafa 1L", imagem: wiki.suco },
+  { chave: "setores-bebida-energetico", categoria: "Bebidas", tipo: "energéticos", nome: "Bebida Energética", preco: 8.49, descricao: "Lata 250ml", imagem: wiki.energetico },
+  { chave: "setores-bebida-vinho", categoria: "Bebidas", tipo: "alcoólicas", nome: "Vinho Tinto Demonstrativo", preco: 34.9, descricao: "750ml - venda simulada para maiores de 18 anos", imagem: wiki.vinho, idadeMinima: 18, alcoolico: true },
+
+  { chave: "setores-congelado-pizza", categoria: "Congelados", tipo: "pratos prontos", nome: "Pizza Congelada", preco: 19.9, descricao: "Unidade 460g", imagem: wiki.pizza },
+  { chave: "setores-congelado-lasanha", categoria: "Congelados", tipo: "pratos prontos", nome: "Lasanha Congelada", preco: 16.9, descricao: "Unidade 600g", imagem: wiki.lasanha },
+  { chave: "setores-congelado-hamburguer", categoria: "Congelados", tipo: "carnes congeladas", nome: "Hambúrguer Congelado", preco: 18.9, descricao: "Pacote 672g", imagem: wiki.hamburguer },
+  { chave: "setores-congelado-acai", categoria: "Congelados", tipo: "sobremesas", nome: "Açaí Congelado", preco: 21.9, descricao: "Pote 1L", imagem: wiki.acai },
+  { chave: "setores-congelado-fritas", categoria: "Congelados", tipo: "acompanhamentos", nome: "Batata Frita Congelada", preco: 15.9, descricao: "Pacote 1kg", imagem: wiki.fritas },
+  { chave: "setores-congelado-nuggets", categoria: "Congelados", tipo: "carnes congeladas", nome: "Nuggets de Frango", preco: 17.9, descricao: "Pacote 700g", imagem: wiki.nuggets },
+  { chave: "setores-congelado-frutas", categoria: "Congelados", tipo: "frutas congeladas", nome: "Frutas Vermelhas Congeladas", preco: 24.9, descricao: "Pacote 400g", imagem: wiki.frutasCongeladas },
+  { chave: "setores-congelado-sorvete", categoria: "Congelados", tipo: "sobremesas", nome: "Sorvete de Creme", preco: 22.9, descricao: "Pote 1,5L", imagem: wiki.sorvete },
+
+  { chave: "setores-limpeza-detergente", categoria: "Higiene e Limpeza", tipo: "limpeza doméstica", nome: "Detergente Líquido", preco: 2.89, descricao: "Frasco 500ml", imagem: wiki.detergente },
+  { chave: "setores-limpeza-desinfetante", categoria: "Higiene e Limpeza", tipo: "limpeza doméstica", nome: "Desinfetante", preco: 7.99, descricao: "Frasco 2L", imagem: wiki.desinfetante },
+  { chave: "setores-limpeza-sabao", categoria: "Higiene e Limpeza", tipo: "limpeza doméstica", nome: "Sabão em Pó", preco: 18.9, descricao: "Caixa 1,6kg", imagem: wiki.sabaoPo },
+
+  { chave: "setores-bazar-pote", categoria: "Utensílios Domésticos e Bazar", tipo: "cozinha", nome: "Pote Plástico com Tampa", preco: 12.9, descricao: "Capacidade 1,5L", imagem: wiki.pote },
+  { chave: "setores-bazar-copo", categoria: "Utensílios Domésticos e Bazar", tipo: "mesa", nome: "Jogo de Copos de Vidro", preco: 24.9, descricao: "Conjunto com 6 unidades", imagem: wiki.copos },
+  { chave: "setores-bazar-prato", categoria: "Utensílios Domésticos e Bazar", tipo: "mesa", nome: "Prato de Cerâmica", preco: 13.9, descricao: "Unidade rasa", imagem: wiki.prato },
+  { chave: "setores-bazar-talheres", categoria: "Utensílios Domésticos e Bazar", tipo: "mesa", nome: "Jogo de Talheres", preco: 29.9, descricao: "Conjunto com 12 peças", imagem: wiki.talheres },
+  { chave: "setores-bazar-pano", categoria: "Utensílios Domésticos e Bazar", tipo: "cozinha", nome: "Pano de Prato", preco: 6.99, descricao: "Unidade de algodão", imagem: wiki.pano },
+  { chave: "setores-bazar-esponja", categoria: "Utensílios Domésticos e Bazar", tipo: "cozinha", nome: "Esponja de Cozinha", preco: 3.49, descricao: "Pacote com 3 unidades", imagem: wiki.esponja },
+  { chave: "setores-bazar-balde", categoria: "Utensílios Domésticos e Bazar", tipo: "limpeza", nome: "Balde Plástico", preco: 17.9, descricao: "Capacidade 10L", imagem: wiki.balde },
+  { chave: "setores-bazar-vassoura", categoria: "Utensílios Domésticos e Bazar", tipo: "limpeza", nome: "Vassoura Doméstica", preco: 19.9, descricao: "Unidade com cabo", imagem: wiki.vassoura },
+
+  { chave: "setores-pet-racao-cao", categoria: "Pet Shop", tipo: "alimentação para cães", nome: "Ração para Cães", preco: 54.9, descricao: "Pacote 3kg", imagem: wiki.racaoCao },
+  { chave: "setores-pet-racao-gato", categoria: "Pet Shop", tipo: "alimentação para gatos", nome: "Ração para Gatos", preco: 46.9, descricao: "Pacote 3kg", imagem: wiki.racaoGato },
+  { chave: "setores-pet-petisco-cao", categoria: "Pet Shop", tipo: "petiscos", nome: "Petisco para Cães", preco: 12.9, descricao: "Pacote 100g", imagem: wiki.petiscoCao },
+  { chave: "setores-pet-petisco-gato", categoria: "Pet Shop", tipo: "petiscos", nome: "Petisco para Gatos", preco: 10.9, descricao: "Pacote 80g", imagem: wiki.petiscoGato },
+  { chave: "setores-pet-areia", categoria: "Pet Shop", tipo: "higiene", nome: "Areia Sanitária para Gatos", preco: 18.9, descricao: "Pacote 4kg", imagem: wiki.areiaGato },
+  { chave: "setores-pet-shampoo", categoria: "Pet Shop", tipo: "higiene", nome: "Shampoo para Pets", preco: 16.9, descricao: "Frasco 500ml", imagem: wiki.shampooPet },
+  { chave: "setores-pet-brinquedo", categoria: "Pet Shop", tipo: "acessórios", nome: "Brinquedo para Cachorro", preco: 14.9, descricao: "Unidade", imagem: wiki.brinquedoCao },
+  { chave: "setores-pet-comedouro", categoria: "Pet Shop", tipo: "acessórios", nome: "Comedouro para Pets", preco: 15.9, descricao: "Unidade 600ml", imagem: wiki.comedouro },
+];
+
+export const demoProducts = [...legacyCatalog, ...newProducts];

@@ -12,6 +12,10 @@ Docker cria o ambiente e a rede; não valida dados por conta própria. O Node.js
 4. Carregue o catálogo com `docker compose exec api node src/database/cli.js seed`.
 5. Verifique `docker compose ps` e `curl http://localhost:4000/health/ready`.
 
+O seed atual contém 104 produtos em 10 setores e pode ser executado novamente sem duplicação. Para checar as imagens HTTPS acrescentadas nesta versão antes de carregar os dados, execute `npm run verify:images`.
+
+Para validar o volume de fotos no ambiente normal, execute `npm run verify:photo-persistence`. O roteiro cria uma conta temporária, envia um PNG, reinicia somente o contêiner `api`, compara o arquivo devolvido e remove foto e conta ao terminar. O volume do banco e o volume de fotos não são apagados.
+
 O healthcheck Java consulta o Actuator dentro do contêiner. A readiness somente fica `UP` se o indicador `validacaoTcp` conseguir abrir uma conexão local, enviar `health`, interpretar a resposta e consultar o banco.
 
 ## Suíte isolada Docker
@@ -33,7 +37,9 @@ cd services/confirmacao-java
 ./mvnw -B test
 ```
 
-No Windows, use `mvnw.cmd`. Os testes Node de catálogo usam PostgreSQL temporário. Em caminhos contendo caracteres não ASCII, versões antigas do binário PostgreSQL para Windows podem falhar no `initdb`; a suíte Docker evita essa limitação.
+No Windows, use `mvnw.cmd`. Os testes Node de catálogo usam PostgreSQL temporário. Em caminhos contendo caracteres não ASCII, o binário PostgreSQL embutido para Windows pode falhar no `initdb`; execute a suíte a partir de um junction com caminho ASCII ou utilize a suíte Docker.
+
+Além dos contratos anteriores, a suíte confere os 10 setores, o mínimo de 6 produtos ativos por setor, a idempotência do seed e a coerência entre `alcoolico` e `idade_minima = 18`.
 
 ## Falhas e logs
 

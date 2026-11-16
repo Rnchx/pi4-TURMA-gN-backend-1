@@ -132,7 +132,9 @@ No frontend, crie seu `.env` local a partir do exemplo e configure `EXPO_PUBLIC_
 - `db:check` verifica conexão. `db:migrate` aplica arquivos versionados em transação, com registro em `schema_migrations` e trava contra execução concorrente.
 - A primeira migration cria `categorias`, `subcategorias` e `produtos`, alinhadas a CT2/CT4/CT5. Se `categorys` e `products` legadas existirem, importa os registros preservando IDs e cria subcategorias a partir de `type`. As tabelas originais são preservadas como histórico, sem receber novas escritas da API. Faça backup antes de migrar um banco existente.
 - Duplicidade de categorias, referências inválidas ou dados incompatíveis com as restrições interrompem e revertem a migration; nenhum dado é apagado ou ajustado silenciosamente. Corrija os dados com revisão antes de tentar novamente.
-- `db:seed` é explícito e repetível: 58 produtos, 5 categorias e seus tipos/subcategorias, com 6 ofertas demonstrativas (`em_oferta` e `preco_anterior` maior que o preço atual). Reutiliza dados/imagens do SQL original; os preços e a validade não têm finalidade comercial. Produtos demonstrativos têm chave fixa; repetir a carga atualiza esses registros sem duplicá-los, preservando IDs e cadastros manuais. As imagens HTTPS externas dependem dos respectivos hosts.
+- `db:seed` é explícito e repetível: 104 produtos distribuídos em 10 setores e suas subcategorias, com 6 ofertas demonstrativas (`em_oferta` e `preco_anterior` maior que o preço atual). Preserva os produtos anteriores, usa chave demonstrativa fixa e atualiza os mesmos registros sem duplicá-los nem apagar cadastros manuais. As imagens HTTPS explícitas podem ser verificadas com `npm run verify:images`.
+- A migration `005-catalogo-setores-alcool.sql` acrescenta o marcador explícito `alcoolico`. O banco exige que todo item alcoólico também possua `idade_minima = 18`; a validação da idade autenticada continua sendo executada pelo serviço Java na adição e na confirmação.
+- Com o Compose normal saudável, `npm run verify:photo-persistence` cria uma conta descartável, envia uma imagem, reinicia somente a API, confere o mesmo arquivo no volume persistente e remove os dados de teste.
 - `npm start` abre HTTP e verifica a conexão, capturando a falha. Não migra nem popula o banco. Consultas possuem limite de tempo; a API volta a atender quando o PostgreSQL retorna.
 - SIGINT/SIGTERM encerram HTTP e o pool. `db:check`, `db:migrate` e `db:seed` retornam código 1 em caso de falha, sem imprimir credenciais ou consultas.
 
@@ -261,7 +263,7 @@ flowchart LR
 | Serviço | Imagem | Porta na máquina | Healthcheck |
 |---|---|---|---|
 | `postgres` | `postgres:17.11-alpine3.24` (oficial) | `127.0.0.1:${DB_PORT:-5432}` | `pg_isready` |
-| `api` | `safra/api:1.1.0` (build local, `node:24.19.0-alpine3.24`, usuário `node`) | `${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}` | `/health/ready` |
+| `api` | `safra/api:1.2.0` (build local, `node:24.19.0-alpine3.24`, usuário `node`) | `${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}` | `/health/ready` |
 | `confirmacao-java` | `safra/confirmacao-java:0.2.0` (build local) | nenhuma | readiness funcional interna: TCP + PostgreSQL |
 
 Volume nomeado `safra-pgdata` (dados do PostgreSQL), rede `safra-net` e política `restart: unless-stopped`.
@@ -299,7 +301,7 @@ docker compose logs -f api
 docker compose logs confirmacao-java
 ```
 
-Carga demonstrativa (58 produtos, repetível, sem duplicar):
+Carga demonstrativa (104 produtos em 10 setores, repetível, sem duplicar):
 
 ```bash
 docker compose exec api node src/database/cli.js seed

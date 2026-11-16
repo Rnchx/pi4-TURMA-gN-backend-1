@@ -25,7 +25,7 @@ export async function temporaryPostgres() {
   const database = createDatabase(options);
   const { pg_ctl } = await import(`@embedded-postgres/${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}`);
   const exec = (file, args) => new Promise((resolve, reject) => {
-    const child = spawn(file, args, { windowsHide: true, stdio: 'ignore' });
+    const child = spawn(file, args, { windowsHide: true, stdio: 'ignore', cwd: directory });
     child.once('error', reject);
     child.once('exit', code => code === 0 ? resolve() : reject(new Error('pg_ctl falhou; confira o log do cluster temporário.')));
   });
@@ -41,7 +41,16 @@ export async function temporaryPostgres() {
     running = false;
   };
   try {
-    await postgres.initialise();
+    // O initdb 17 para Windows falha ao converter o diretório de trabalho quando o caminho contém
+    // caracteres fora de ASCII (por exemplo, "Área de Trabalho"), mesmo com o dataDir no TEMP.
+    // A inicialização acontece no próprio diretório temporário e o cwd do projeto é restaurado.
+    const projectDirectory = process.cwd();
+    try {
+      process.chdir(directory);
+      await postgres.initialise();
+    } finally {
+      process.chdir(projectDirectory);
+    }
     await start();
   } catch (error) {
     await database.close();

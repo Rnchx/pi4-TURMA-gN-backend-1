@@ -6,6 +6,7 @@ export function product(row, details = false) {
     preco: Number(row.preco),
     emOferta: row.em_oferta,
     idadeMinima: row.idade_minima || 0,
+    alcoolico: Boolean(row.alcoolico),
     ...(row.em_oferta ? { precoAnterior: Number(row.preco_anterior) } : {}),
   };
   return details ? { ...result, descricao: row.descricao, categoriaId: row.categoria_id, subcategoriaId: row.subcategoria_id } : result;
