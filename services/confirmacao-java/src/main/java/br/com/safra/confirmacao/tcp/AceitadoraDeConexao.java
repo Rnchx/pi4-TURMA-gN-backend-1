@@ -1,44 +1,58 @@
 package br.com.safra.confirmacao.tcp;
 
-import tools.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.net.SocketException;
+import java.net.Socket;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Aceita sockets e entrega cada conexão a uma supervisora no pool limitado. */
+/**
+ * Aceita sockets enquanto o {@link ServerSocket} estiver aberto e entrega cada conexão a uma
+ * {@link SupervisoraDeConexao} no pool limitado. Termina quando o servidor fecha o ServerSocket no desligamento.
+ */
 public final class AceitadoraDeConexao implements Runnable {
+
     private static final Logger log = LoggerFactory.getLogger(AceitadoraDeConexao.class);
+
     private final ServerSocket servidor;
     private final ExecutorService conexoes;
-    private final ObjectMapper json;
-    private final ProcessadorDeOperacoes processador;
-    private final int limite;
-    private final int timeoutMs;
+    private final Servidor dono;
 
-    public AceitadoraDeConexao(ServerSocket servidor, ExecutorService conexoes, ObjectMapper json,
-            ProcessadorDeOperacoes processador, int limite, int timeoutMs) {
+    public AceitadoraDeConexao(ServerSocket servidor, ExecutorService conexoes, Servidor dono) {
         this.servidor = servidor;
         this.conexoes = conexoes;
-        this.json = json;
-        this.processador = processador;
-        this.limite = limite;
-        this.timeoutMs = timeoutMs;
+        this.dono = dono;
     }
 
-    @Override public void run() {
+    @Override
+    public void run() {
         while (!servidor.isClosed()) {
+            Socket socket;
             try {
-                var socket = servidor.accept();
-                log.info("Conexão TCP interna estabelecida.");
-                conexoes.execute(new SupervisoraDeConexao(socket, json, processador, limite, timeoutMs));
-            } catch (SocketException e) {
-                if (!servidor.isClosed()) log.warn("Falha ao aceitar conexão TCP: {}", e.getClass().getSimpleName());
+                socket = servidor.accept();
             } catch (IOException e) {
-                log.warn("Falha ao aceitar conexão TCP: {}", e.getClass().getSimpleName());
+                if (!servidor.isClosed()) {
+                    log.warn("Falha ao aceitar conexão TCP: {}", e.getClass().getSimpleName());
+                }
+                continue;
             }
+            try {
+                conexoes.execute(dono.novaSupervisora(socket));
+                log.debug("Conexão TCP interna estabelecida.");
+            } catch (RejectedExecutionException desligando) {
+                fechar(socket);
+            }
+        }
+        log.debug("AceitadoraDeConexao encerrada.");
+    }
+
+    private static void fechar(Socket socket) {
+        try {
+            socket.close();
+        } catch (IOException ignorado) {
+            // Conexão recusada durante o desligamento.
         }
     }
 }

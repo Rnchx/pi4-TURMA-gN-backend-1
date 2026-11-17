@@ -16,7 +16,18 @@ O seed atual contém 237 produtos únicos em 10 setores e pode ser executado nov
 
 Para validar o volume de fotos no ambiente normal, execute `npm run verify:photo-persistence`. O roteiro cria uma conta temporária, envia um PNG, reinicia somente o contêiner `api`, compara o arquivo devolvido e remove foto e conta ao terminar. O volume do banco e o volume de fotos não são apagados.
 
-O healthcheck Java consulta o Actuator dentro do contêiner. A readiness somente fica `UP` se o indicador `validacaoTcp` conseguir abrir uma conexão local, enviar `health`, interpretar a resposta e consultar o banco.
+O healthcheck Java usa o próprio protocolo TCP: o `VerificadorDeSaude` abre uma conexão local, envia `health` como string JSON, interpreta a resposta e exige `sucesso: true` (a operação consulta o banco). Não há Actuator nem servidor HTTP no Java.
+
+### Desligamento ordenado do Java
+
+```bash
+docker compose exec api npm run java:shutdown
+docker compose ps confirmacao-java        # Exited (0), sem reinício automático (restart: on-failure)
+docker compose logs confirmacao-java      # PedidoParaSair recebido → ComunicadoDeDesligamento enviado → Servidor TCP SAFRA encerrado
+docker compose up -d confirmacao-java     # volta a ficar healthy
+```
+
+Com o Java parado, a API continua viva e as operações que dependem dele respondem 503. Sem Docker, com o Java iniciado por `java -jar target/confirmacao-java.jar`, use `npm run java:shutdown` na raiz do backend.
 
 ## Suíte isolada Docker
 
@@ -36,8 +47,23 @@ Os CPFs do runner são fixos: execute `down -v` entre duas execuções para come
 ```bash
 npm test
 cd services/confirmacao-java
-./mvnw -B test
+./mvnw -B clean test
+./mvnw -B clean package   # gera target/confirmacao-java.jar (JAR executável)
 ```
+
+Os testes Java cobrem:
+- `Parceiro` com `BufferedReader`/`PrintWriter`;
+- JSON por linha e resposta terminada em LF;
+- fragmentação, duas mensagens na mesma conexão, JSON inválido, linha vazia, limite de bytes, timeout e desconexão;
+- conexões simultâneas e remoção do parceiro do registro;
+- `PedidoParaSair` com dois clientes e o solicitante recebendo o `ComunicadoDeDesligamento`;
+- recusa de novas conexões, fechamento de sockets e término das threads e executores;
+- pedidos simultâneos sem deadlock;
+- healthcheck TCP;
+- compatibilidade do Argon2 com hashes existentes;
+- configuração por ambiente.
+
+`tests/java-shutdown.test.js` cobre o cliente administrativo Node: comunicado fragmentado, timeout, servidor indisponível e códigos de saída do `npm run java:shutdown`.
 
 No Windows, use `mvnw.cmd`. Os testes Node de catálogo usam PostgreSQL temporário. Em caminhos contendo caracteres não ASCII, o binário PostgreSQL embutido para Windows pode falhar no `initdb`; execute a suíte a partir de um junction com caminho ASCII ou utilize a suíte Docker.
 

@@ -39,6 +39,8 @@ export function tcpClient({ host, port, timeoutMs = 5000, maxMessageBytes = 3276
       if (lf < 0) return;
       let response;
       try { response = JSON.parse(buffer.subarray(0, lf).toString('utf8')); } catch { return finish(unavailable()); }
+      // O servidor está desligando (PedidoParaSair): a operação não foi atendida.
+      if (response?.tipo === 'comunicadoDeDesligamento') return finish(unavailable());
       if (response?.requestId !== requestId || typeof response.sucesso !== 'boolean') return finish(unavailable());
       if (!response.sucesso) {
         const code = response.codigo || 'erroInterno';

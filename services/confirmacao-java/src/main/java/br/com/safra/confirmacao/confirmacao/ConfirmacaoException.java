@@ -1,36 +1,34 @@
 package br.com.safra.confirmacao.confirmacao;
 
-import org.springframework.http.HttpStatus;
-
-/** Erros de CT16 com o código e a mensagem definidos no contrato. */
+/** Erros de CT16 com o código e a mensagem definidos no contrato (o status equivalente consta no contrato). */
 public class ConfirmacaoException extends RuntimeException {
 
-    private final HttpStatus status;
+    private final int status;
     private final String codigo;
 
-    ConfirmacaoException(HttpStatus status, String codigo, String mensagem) {
+    ConfirmacaoException(int status, String codigo, String mensagem) {
         super(mensagem);
         this.status = status;
         this.codigo = codigo;
     }
 
     static ConfirmacaoException entradaInvalida() {
-        return new ConfirmacaoException(HttpStatus.BAD_REQUEST, "entradaInvalida", "Dados da confirmação inválidos.");
+        return new ConfirmacaoException(400, "entradaInvalida", "Dados da confirmação inválidos.");
     }
 
     static ConfirmacaoException idempotenciaConflitante() {
-        return new ConfirmacaoException(HttpStatus.CONFLICT, "idempotenciaConflitante", "A referência já foi utilizada.");
+        return new ConfirmacaoException(409, "idempotenciaConflitante", "A referência já foi utilizada.");
     }
 
     static ConfirmacaoException bancoIndisponivel() {
-        return new ConfirmacaoException(HttpStatus.SERVICE_UNAVAILABLE, "bancoIndisponivel", "A confirmação não pôde ser persistida.");
+        return new ConfirmacaoException(503, "bancoIndisponivel", "A confirmação não pôde ser persistida.");
     }
 
     static ConfirmacaoException erroInterno() {
-        return new ConfirmacaoException(HttpStatus.INTERNAL_SERVER_ERROR, "erroInterno", "A confirmação não pôde ser gerada.");
+        return new ConfirmacaoException(500, "erroInterno", "A confirmação não pôde ser gerada.");
     }
 
-    public HttpStatus status() {
+    public int status() {
         return status;
     }
 

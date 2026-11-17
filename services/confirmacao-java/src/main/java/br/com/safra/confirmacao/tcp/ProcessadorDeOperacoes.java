@@ -8,18 +8,18 @@ import br.com.safra.confirmacao.historico.HistoricoService;
 import br.com.safra.confirmacao.usuario.OperacaoException;
 import br.com.safra.confirmacao.usuario.RestricaoEtariaService;
 import br.com.safra.confirmacao.usuario.UsuarioService;
+import br.com.safra.confirmacao.banco.Banco;
+import br.com.safra.confirmacao.banco.BancoException;
 import tools.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
 
 /** Identifica a operação e delega validação/persistência às regras de domínio. */
-@Component
-public class ProcessadorDeOperacoes {
+public class ProcessadorDeOperacoes implements TratadorDePedidos {
+    private static final Pattern REQUEST_ID = Pattern.compile("[A-Za-z0-9._:-]{1,100}");
     private static final Logger LOG = LoggerFactory.getLogger(ProcessadorDeOperacoes.class);
     private final ObjectMapper json;
     private final UsuarioService usuarios;
@@ -27,22 +27,27 @@ public class ProcessadorDeOperacoes {
     private final ConfirmacaoService confirmacoes;
     private final CupomService cupons;
     private final HistoricoService historico;
-    private final JdbcTemplate jdbc;
+    private final Banco banco;
 
     public ProcessadorDeOperacoes(ObjectMapper json, UsuarioService usuarios, RestricaoEtariaService restricoes,
-            ConfirmacaoService confirmacoes, CupomService cupons, HistoricoService historico, JdbcTemplate jdbc) {
+            ConfirmacaoService confirmacoes, CupomService cupons, HistoricoService historico, Banco banco) {
         this.json = json;
         this.usuarios = usuarios;
         this.restricoes = restricoes;
         this.confirmacoes = confirmacoes;
         this.cupons = cupons;
         this.historico = historico;
-        this.jdbc = jdbc;
+        this.banco = banco;
     }
 
+    static boolean requestIdValido(String id) {
+        return id != null && REQUEST_ID.matcher(id).matches();
+    }
+
+    @Override
     public PedidoDeResultado processar(PedidoDeOperacao pedido) {
         String id = pedido == null || pedido.requestId() == null ? "desconhecido" : pedido.requestId();
-        if (pedido == null || !id.matches("[A-Za-z0-9._:-]{1,100}") || pedido.operacao() == null || pedido.dados() == null) {
+        if (pedido == null || !requestIdValido(id) || pedido.operacao() == null || pedido.dados() == null) {
             return PedidoDeResultado.erro(id, "entradaInvalida", "Mensagem TCP inválida.");
         }
         try {
@@ -83,7 +88,7 @@ public class ProcessadorDeOperacoes {
             return PedidoDeResultado.erro(id, e.codigo(), e.getMessage());
         } catch (ConfirmacaoException e) {
             return PedidoDeResultado.erro(id, e.codigo(), e.getMessage());
-        } catch (DataAccessException e) {
+        } catch (BancoException e) {
             return PedidoDeResultado.erro(id, "bancoIndisponivel", "Banco de dados indisponível.");
         } catch (Exception e) {
             LOG.error("Falha interna na operação TCP requestId={} operacao={} tipo={}", id, pedido.operacao(), e.getClass().getSimpleName());
@@ -100,7 +105,7 @@ public class ProcessadorDeOperacoes {
     }
 
     private Map<String, String> health() {
-        jdbc.queryForObject("SELECT 1", Integer.class);
+        banco.valor("SELECT 1", Integer.class);
         return Map.of("servico", "disponivel", "banco", "disponivel");
     }
 }

@@ -1,7 +1,7 @@
 # Executar o serviço Java em contêiner Docker
 
 ## Status
-Aceito
+Aceito. O uso de Spring Boot foi substituído pela ADR 0007 (Java Maven convencional, sem Spring).
 
 ## Contexto
 O professor exige que um componente do backend seja desenvolvido em Java e executado com Docker. Como o backend principal do Safra 2.0 utiliza Node.js com Express.js, a equipe decidiu adicionar um serviço Java independente, evitando a migração completa da aplicação.

@@ -5,8 +5,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
+import br.com.safra.confirmacao.banco.Banco;
 
 /**
  * Regras de cupom. Toda decisão (existência, primeira compra, uso único, valor do desconto) é tomada aqui,
@@ -18,7 +17,6 @@ import org.springframework.stereotype.Service;
  * <li>Cupons "somente primeira compra" exigem que a conta não tenha nenhuma compra concluída.</li>
  * </ul>
  */
-@Service
 public class CupomService {
 
     /** Validação pedida pelo resumo da compra: o subtotal é lido do carrinho no banco, nunca recebido. */
@@ -33,16 +31,16 @@ public class CupomService {
 
     private static final Pattern FORMATO = Pattern.compile("[A-Za-z0-9]{1,30}");
 
-    private final JdbcTemplate jdbc;
+    private final Banco banco;
 
-    public CupomService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public CupomService(Banco banco) {
+        this.banco = banco;
     }
 
     public Avaliacao validar(Validacao pedido) {
         UUID usuarioId = uuid(pedido == null ? null : pedido.usuarioId(), "naoAutorizado", "Faça login para continuar.");
         UUID carrinhoId = uuid(pedido.carrinhoId(), "entradaInvalida", "Informe um carrinho válido.");
-        Boolean aberto = jdbc.query("""
+        Boolean aberto = banco.extrair("""
                 SELECT status = 'aberto' AND (usuario_id IS NULL OR usuario_id = ?) FROM carrinhos WHERE id = ?""",
                 rs -> rs.next() ? rs.getBoolean(1) : null, usuarioId, carrinhoId);
         if (aberto == null) {
@@ -51,7 +49,7 @@ public class CupomService {
         if (!aberto) {
             throw new OperacaoException("confirmacaoNaoPermitida", "O carrinho não pode receber cupom.");
         }
-        BigDecimal subtotal = jdbc.queryForObject("""
+        BigDecimal subtotal = banco.valor("""
                 SELECT COALESCE(sum(quantidade * preco_unitario), 0)::numeric(12,2) FROM itens_carrinho WHERE carrinho_id = ?""",
                 BigDecimal.class, carrinhoId);
         if (subtotal == null || subtotal.signum() == 0) {
@@ -68,7 +66,7 @@ public class CupomService {
         if (codigo == null || !FORMATO.matcher(codigo).matches()) {
             throw invalido();
         }
-        Cupom cupom = jdbc.query("""
+        Cupom cupom = banco.extrair("""
                 SELECT codigo, valor_desconto, somente_primeira_compra, ativo FROM cupons WHERE codigo = ?""",
                 rs -> rs.next() ? new Cupom(rs.getString(1), rs.getBigDecimal(2), rs.getBoolean(3), rs.getBoolean(4)) : null,
                 codigo);
@@ -77,13 +75,13 @@ public class CupomService {
             throw invalido();
         }
         if (cupom.somentePrimeiraCompra()) {
-            Integer usosDoCupom = jdbc.queryForObject("""
+            Integer usosDoCupom = banco.valor("""
                     SELECT count(*) FROM compras_demonstrativas WHERE usuario_id = ? AND cupom_codigo = ?""",
                     Integer.class, usuarioId, cupom.codigo());
             if (usosDoCupom != null && usosDoCupom > 0) {
                 throw new OperacaoException("cupomJaUtilizado", "Este cupom já foi utilizado nesta conta.");
             }
-            Integer compras = jdbc.queryForObject("SELECT count(*) FROM compras_demonstrativas WHERE usuario_id = ?",
+            Integer compras = banco.valor("SELECT count(*) FROM compras_demonstrativas WHERE usuario_id = ?",
                     Integer.class, usuarioId);
             if (compras != null && compras > 0) {
                 throw new OperacaoException("cupomIndisponivel", "Este cupom é válido somente na primeira compra da conta.");

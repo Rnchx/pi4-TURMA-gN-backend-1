@@ -12,22 +12,15 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import br.com.safra.confirmacao.banco.Banco;
+import br.com.safra.confirmacao.banco.BancoException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
-import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.TransientDataAccessException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.CannotCreateTransactionException;
-import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * CT16: valida, aplica a idempotência e grava CT17 e CT18 em uma única transação. O cupom é revalidado
  * dentro dessa transação, depois de um bloqueio por usuário, e o desconto/total final são calculados aqui.
  */
-@Service
 public class ConfirmacaoService {
 
     private static final Logger log = LoggerFactory.getLogger(ConfirmacaoService.class);
@@ -44,14 +37,13 @@ public class ConfirmacaoService {
     }
 
     private final ComprasRepository compras;
-    private final TransactionTemplate transacao;
+    private final Banco banco;
     private final RestricaoEtariaService restricoes;
     private final CupomService cupons;
 
-    ConfirmacaoService(ComprasRepository compras, TransactionTemplate transacao, RestricaoEtariaService restricoes,
-            CupomService cupons) {
-        this.compras = compras;
-        this.transacao = transacao;
+    public ConfirmacaoService(Banco banco, RestricaoEtariaService restricoes, CupomService cupons) {
+        this.compras = new ComprasRepository(banco);
+        this.banco = banco;
         this.restricoes = restricoes;
         this.cupons = cupons;
     }
@@ -61,18 +53,18 @@ public class ConfirmacaoService {
         restricoes.validar(new RestricaoEtariaService.Validacao(dados.usuarioId().toString(),
                 dados.itens().stream().map(ItemValidado::produtoId).toList()));
         try {
-            return transacao.execute(status -> {
+            return banco.emTransacao(() -> {
                 compras.bloquearUsuario(dados.usuarioId());
                 return existente(dados).orElseGet(() -> registrar(dados));
             });
-        } catch (DuplicateKeyException corrida) {
-            if (String.valueOf(corrida.getMessage()).contains("compras_primeira40_por_usuario")) {
+        } catch (BancoException.ViolacaoDeUnicidade corrida) {
+            if ("compras_primeira40_por_usuario".equals(corrida.restricao())) {
                 // Última barreira do banco: o índice único parcial impede o segundo uso de PRIMEIRA40.
                 throw new OperacaoException("cupomJaUtilizado", "Este cupom já foi utilizado nesta conta.");
             }
             // Outra tentativa gravou a mesma referência ou o mesmo carrinho ao mesmo tempo: relê e aplica a regra.
             try {
-                return transacao.execute(status -> existente(dados).orElseThrow(ConfirmacaoException::idempotenciaConflitante));
+                return banco.emTransacao(() -> existente(dados).orElseThrow(ConfirmacaoException::idempotenciaConflitante));
             } catch (RuntimeException erro) {
                 throw traduzir(erro);
             }
@@ -146,17 +138,16 @@ public class ConfirmacaoService {
         if (erro instanceof ConfirmacaoException || erro instanceof OperacaoException) {
             return erro;
         }
-        if (erro instanceof CannotCreateTransactionException || erro instanceof DataAccessResourceFailureException
-                || erro instanceof TransientDataAccessException) {
+        if (erro instanceof BancoException.Indisponivel) {
             log.warn("PostgreSQL indisponível durante a confirmação: {}", erro.getClass().getSimpleName());
             return ConfirmacaoException.bancoIndisponivel();
         }
-        if (erro instanceof DataIntegrityViolationException) {
+        if (erro instanceof BancoException.ViolacaoDeIntegridade) {
             // Carrinho ou produto inexistente, ou valor fora das restrições: a transação foi revertida.
             log.warn("Confirmação recusada pelas restrições do banco: {}", erro.getClass().getSimpleName());
             return ConfirmacaoException.entradaInvalida();
         }
-        if (erro instanceof DataAccessException) {
+        if (erro instanceof BancoException) {
             log.error("Falha ao gravar a confirmação", erro);
             return ConfirmacaoException.erroInterno();
         }

@@ -6,6 +6,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src/ src/
+# Cliente administrativo interno: docker compose exec api npm run java:shutdown
+COPY scripts/shutdown-java.js scripts/shutdown-java.js
 RUN mkdir -p /app/uploads/profile && chown -R node:node /app/uploads
 USER node
 EXPOSE 4000

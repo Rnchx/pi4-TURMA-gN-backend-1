@@ -2,7 +2,6 @@ package br.com.safra.confirmacao.usuario;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -10,11 +9,11 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import br.com.safra.confirmacao.banco.Banco;
 
 class UsuarioServiceValidacaoTest {
     private static final Clock RELOGIO = Clock.fixed(Instant.parse("2026-11-15T12:00:00Z"), ZoneOffset.UTC);
-    private final UsuarioService service = new UsuarioService(mock(JdbcTemplate.class), RELOGIO);
+    private final UsuarioService service = new UsuarioService(new Banco(null), RELOGIO);
 
     private static UsuarioService.Cadastro cadastro(String nome, String cpf, String email, String senha, String confirmacao,
             String nascimento) {
@@ -73,20 +72,21 @@ class UsuarioServiceValidacaoTest {
     }
 
     @Test void cadastroValidoPersisteSomenteHashArgon2idEData() {
-        class JdbcFalso extends JdbcTemplate {
+        class BancoFalso extends Banco {
             Object[] gravado;
-            @Override public <T> T queryForObject(String sql, Class<T> tipo, Object... argumentos) {
+            BancoFalso() { super(null); }
+            @Override public <T> T valor(String sql, Class<T> tipo, Object... argumentos) {
                 return tipo.cast(Boolean.FALSE);
             }
-            @Override public int update(String sql, Object... argumentos) { gravado = argumentos; return 1; }
+            @Override public int atualizar(String sql, Object... argumentos) { gravado = argumentos; return 1; }
         }
-        JdbcFalso jdbc = new JdbcFalso();
-        var resposta = new UsuarioService(jdbc, RELOGIO).cadastrar(cadastro(
+        BancoFalso banco = new BancoFalso();
+        var resposta = new UsuarioService(banco, RELOGIO).cadastrar(cadastro(
                 "  Maria   da Silva ", "529.982.247-25", " MARIA@EXAMPLE.COM ", "SenhaLonga1!", "SenhaLonga1!", "29/02/2000"));
         assertThat(resposta.usuario().nome()).isEqualTo("Maria da Silva");
         assertThat(resposta.usuario().email()).isEqualTo("maria@example.com");
         assertThat(resposta.usuario().dataNascimento()).isEqualTo("29/02/2000");
-        assertThat(jdbc.gravado[4].toString()).startsWith("$argon2id$").doesNotContain("SenhaLonga1!");
-        assertThat(jdbc.gravado[5]).isEqualTo(LocalDate.of(2000, 2, 29));
+        assertThat(banco.gravado[4].toString()).startsWith("$argon2id$").doesNotContain("SenhaLonga1!");
+        assertThat(banco.gravado[5]).isEqualTo(LocalDate.of(2000, 2, 29));
     }
 }

@@ -19,9 +19,8 @@ services:
   confirmacao-java:
     build: ./services/confirmacao-java
     environment:
-      SPRING_PROFILES_ACTIVE: docker
-      SERVER_PORT: 8080
       TCP_PORT: 3000
+      TCP_BIND_ADDRESS: 0.0.0.0
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: safra_test
@@ -30,11 +29,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    expose: ["3000", "8080"]
+    expose: ["3000"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
+      test: ["CMD", "java", "-XX:TieredStopAtLevel=1", "-cp", "/app/app.jar", "br.com.safra.confirmacao.tcp.VerificadorDeSaude"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 20
       start_period: 20s
     networks: [safra-test]

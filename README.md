@@ -41,7 +41,7 @@ As funcionalidades previstas para o backend incluem:
 - **Conta do consumidor:** cadastro, autenticação, perfil com foto, troca de senha e exclusão permanente.
 - **Restrição etária acadêmica:** nascimento persistido como `DATE` e idade calculada pelo Java na adição e no checkout de produtos 18+.
 - **Persistência de dados:** armazenamento das informações utilizando PostgreSQL.
-- **Integração com Java:** comunicação com um serviço complementar desenvolvido com Spring Boot.
+- **Integração com Java:** o Node é cliente TCP de um servidor Java (ServerSocket, strings JSON por linha).
 - **Assistente com IA:** interpretação opcional de pedidos por texto ou áudio pela API da OpenAI, com validação no catálogo local.
 - **Ofertas demonstrativas:** produtos promocionais cadastrados no próprio banco, sem consulta a mercados externos.
 - **Tratamento de erros:** respostas padronizadas para facilitar a comunicação com o frontend.
@@ -55,8 +55,8 @@ As funcionalidades previstas para o backend incluem:
 | Node.js | Ambiente de execução do backend principal |
 | Express.js | Criação e organização da API HTTP |
 | Java | Desenvolvimento do serviço complementar |
-| Spring Boot | Estruturação da aplicação Java |
-| Docker | Empacotamento e execução do serviço Java em contêiner |
+| Maven | Dependências e build do servidor Java (sem Spring) |
+| Docker | Ferramenta opcional de empacotamento e execução (não é o servidor) |
 | PostgreSQL | Banco de dados relacional |
 | OpenAI API | Interpretação estruturada de pedidos e transcrição opcional de áudio |
 | npm | Gerenciamento de dependências do backend Node.js |
@@ -81,8 +81,8 @@ Node.js + Express.js
         |                      |                      |
         v                      v                      v
 PostgreSQL             Serviço Java           API OpenAI
-                       Spring Boot             serviço externo
-                       Docker
+                       Java 21 + Maven         serviço externo
+                       ServerSocket TCP
                             |
                             v
                        PostgreSQL
@@ -193,32 +193,123 @@ Os aliases `/products` e `/categorys` (formato `name/price/photo/idcategory`) fo
 
 A suíte cobre CT1/CT3/CT6/CT7, carrinho CT8–CT14 (cenário E7, produto repetido, limites de quantidade, concorrência, preço persistido, carrinho fechado), confirmação CT15 com Serviço de Confirmação simulado (idempotência, tentativas simultâneas, indisponibilidade e tempo limite), remoção das rotas legadas, filtros, criação/atualização, entradas inválidas, conflitos, registros inativos, migration do legado, repetição da carga, CORS, saúde, inicialização sem banco e desligamento/recuperação real do PostgreSQL. O teste visual integrado depende do frontend Expo em execução e é documentado no relatório do ciclo.
 
-## Serviço Java com Spring Boot e Docker
+## Servidor Java (TCP acadêmico, Maven, sem Spring)
 
-O serviço Java ([`services/confirmacao-java`](services/confirmacao-java)) executa no Docker e se comunica com o Node por TCP, usando JSON UTF-8 delimitado por LF. O `ServerSocket` atende cadastro, autenticação, perfil, senha, foto, exclusão, restrição etária, confirmação e `health`; não há endpoint HTTP para essas operações.
+O servidor Java ([`services/confirmacao-java`](services/confirmacao-java)) é uma aplicação **Java 21 + Maven convencional**. Ele abre e controla manualmente um `ServerSocket`, e o Node.js é o seu cliente TCP. As mensagens são **strings JSON UTF-8, uma por linha (LF)**.
+
+```text
+Aplicativo Expo ──HTTP/JSON──▶ API Node.js (cliente TCP) ──TCP: strings JSON + LF──▶ Servidor Java (ServerSocket) ──JDBC──▶ PostgreSQL
+```
+
+O `ServerSocket` atende cadastro, autenticação, perfil, senha, foto, exclusão, restrição etária, cupons, confirmação, histórico e `health`. Não há servidor HTTP no Java.
 
 - Valida referência, carrinho, quantidades (1 a 99), preços e subtotais em `BigDecimal`, sem arredondamento implícito.
 - Gera o identificador `SAFRA-DEMO-XXXXXXXX` e responde 201 para uma nova compra.
-- Mesma referência com o mesmo carrinho e os mesmos dados: devolve a compra original (200). Referência reaproveitada com dados diferentes, ou carrinho já confirmado com outra referência: 409 `idempotenciaConflitante`. Requisições simultâneas são resolvidas pelas restrições `UNIQUE`.
-- Erros: 400 `entradaInvalida`, 409 `idempotenciaConflitante`, 500 `erroInterno`, 503 `bancoIndisponivel`, com as mensagens do contrato.
-- As tabelas e evoluções são criadas pelas migrations incrementais da API, que mantém o único histórico de esquema do projeto.
+- Idempotência da confirmação:
+  - mesma referência, mesmo carrinho e mesmos dados devolvem a compra original (200);
+  - referência reaproveitada com dados diferentes, ou carrinho já confirmado com outra referência, resulta em 409 `idempotenciaConflitante`.
+- Erros: 400 `entradaInvalida`, 409 `idempotenciaConflitante`, 500 `erroInterno`, 503 `bancoIndisponivel`, com as mensagens dos contratos.
+- As tabelas são criadas pelas migrations da API, que mantêm o único histórico de esquema do projeto.
 
-| Item | Valor |
+### Tecnologias e decisões
+
+| Item | Escolha |
 |---|---|
-| Linguagem / framework | Java 21 (LTS, Eclipse Temurin) / Spring Boot 4.1.2 |
-| Build | Maven 3.9.16 via wrapper versionado (`mvnw`, checksum SHA-256 fixado) |
-| Imagem | `safra/confirmacao-java:0.2.0`, build em duas etapas; a final contém só o JRE e o JAR, roda como usuário `safra` (uid 10001) |
-| Portas internas | `TCP_PORT=3000` para negócio; `SERVER_PORT=8080` somente para Actuator; nenhuma é publicada pelo Compose |
-| Perfil | `docker`: banco em `postgres:5432` (nome do serviço na rede `safra-net`) |
+| Linguagem e build | Java 21 (Eclipse Temurin) e Maven via wrapper (`mvnw`/`mvnw.cmd`); JAR executável único (`maven-shade-plugin`) |
+| Socket | `ServerSocket` e `Socket`, cada um associado a um `BufferedReader` (entrada) e a um `PrintWriter` (saída) em UTF-8 |
+| Concorrência | `AceitadoraDeConexao` e `SupervisoraDeConexao` implementam `Runnable` e rodam em `ExecutorService` (pool limitado por `TCP_MAX_CONNECTIONS`) |
+| Formato | String JSON por linha; Jackson apenas converte objetos em texto JSON e vice-versa |
+| Banco | JDBC explícito (`PreparedStatement`, try-with-resources, transações com rollback) e pool HikariCP |
+| Senhas | Argon2id (BouncyCastle), no mesmo formato já gravado no banco |
+| Logs | SLF4J com `slf4j-simple`, em stdout |
 
-| Rota | Banco ativo | Banco desligado |
+- **Sem serialização nativa Java:** não usamos `Serializable`, `ObjectInputStream`/`ObjectOutputStream` nem `Data*Stream`. O cliente é Node.js, que não lê objetos Java serializados; strings JSON são interoperáveis.
+- **Sem Spring Boot nem Spring Framework.** Não eram necessários para o escopo acadêmico. As dependências são criadas manualmente em `ConfirmacaoApplication`, por construtores explícitos, e o Maven gerencia dependências e build.
+- **Docker é ferramenta, não servidor.** Ele apenas empacota e executa; o servidor é a aplicação Java que abre o `ServerSocket`. Dá para rodar tudo sem Docker.
+
+### Protocolo
+
+| Mensagem | Formato (uma linha JSON) |
+|---|---|
+| Pedido comum | `{"requestId":"uuid","operacao":"nomeDaOperacao","dados":{}}` |
+| Resposta de sucesso | `{"requestId":"uuid","sucesso":true,"dados":{...},"codigo":null,"mensagem":null}` |
+| Resposta de erro | `{"requestId":"uuid","sucesso":false,"dados":null,"codigo":"codigoDoErro","mensagem":"Mensagem segura"}` |
+| `PedidoParaSair` | `{"requestId":"uuid","operacao":"pedidoParaSair","dados":{}}` |
+| `ComunicadoDeDesligamento` | `{"tipo":"comunicadoDeDesligamento","mensagem":"O servidor será desligado.","requestId":"uuid do pedido ou null","emitidoEm":"2026-11-17T12:00:00Z"}` |
+
+Proteções preservadas:
+- timeout por conexão (`TCP_TIMEOUT_MS`);
+- limite de bytes por linha (`TCP_MAX_MESSAGE_BYTES`), verificado antes do LF;
+- linha vazia ou JSON inválido respondem `entradaInvalida`, sem derrubar a conexão;
+- fragmentação TCP e várias mensagens na mesma conexão;
+- flush e `checkError()` após cada escrita;
+- escrita sincronizada, porque a resposta e o aviso de desligamento podem disputar o mesmo cliente.
+
+### Desligamento ordenado (`PedidoParaSair` → `ComunicadoDeDesligamento`)
+
+1. O cliente administrativo envia `pedidoParaSair`. A `SupervisoraDeConexao` cria um `PedidoParaSair` e o entrega ao `Servidor`.
+2. O desligamento roda em uma thread dedicada (`safra-desligamento`), fora do pool de conexões. Assim ele pode aguardar o próprio pool terminar sem deadlock. A sequência acontece uma única vez, mesmo com pedidos simultâneos.
+3. O `ServerSocket` é fechado e novas conexões deixam de ser aceitas.
+4. Um `ComunicadoDeDesligamento` é enviado a **todos os clientes ativos, inclusive ao solicitante**. O registro de parceiros usa `ConcurrentHashMap.newKeySet()`.
+5. O servidor envia FIN, aguarda `TCP_SHUTDOWN_GRACE_MS` para os clientes lerem o aviso e fecha os sockets.
+6. Encerra a aceitadora e as supervisoras, aguarda os `ExecutorService` e fecha o pool do banco.
+7. A JVM termina sem threads pendentes.
+
+SIGTERM ou Ctrl+C executam a mesma sequência, pelo shutdown hook.
+
+### Variáveis de ambiente
+
+| Variável | Padrão | Uso |
 |---|---|---|
-| GET / | 200, `{"servico":"safra-confirmacao",...}` | 200 |
-| GET /actuator/health/liveness | 200, `UP` | 200, `UP` (processo vivo) |
-| GET /actuator/health/readiness | 200, `UP`, `db: UP` | 503, `DOWN`, `db: DOWN` |
-| Outras rotas | 404 `{"codigo":"rotaNaoEncontrada","mensagem":"Rota não encontrada."}` | igual |
+| `TCP_BIND_ADDRESS` | `127.0.0.1` | Interface do `ServerSocket` (o Compose usa `0.0.0.0` dentro da rede interna) |
+| `TCP_PORT` | `3000` | Porta TCP |
+| `TCP_TIMEOUT_MS` | `10000` | Inatividade máxima por conexão |
+| `TCP_MAX_MESSAGE_BYTES` | `32768` | Tamanho máximo de uma linha |
+| `TCP_MAX_CONNECTIONS` | `50` | Threads do pool de supervisoras |
+| `TCP_SHUTDOWN_GRACE_MS` | `300` | Espera entre o comunicado e o fechamento dos sockets |
+| `DB_HOST`, `DB_PORT`, `DB_NAME` | `localhost`, `5432`, `safra` | PostgreSQL |
+| `DB_USER`, `DB_PASSWORD` | obrigatórias | Credenciais, somente por ambiente; nunca aparecem em logs |
 
-O Actuator expõe somente `health`, sem detalhes (URL JDBC, versões ou credenciais). Erros seguem o formato `{"codigo", "mensagem"}` dos contratos, sem stack trace. Logs vão para stdout/stderr (`docker compose logs`). O encerramento é gracioso: no SIGTERM, o Tomcat para de aceitar conexões, conclui as requisições ativas (até 20 s) e fecha o pool. O código de saída 143 é o normal da JVM para SIGTERM.
+### Compilar, iniciar e desligar
+
+Compilar e testar (Windows: `.\mvnw.cmd`; Linux/macOS: `./mvnw`):
+
+```bash
+cd services/confirmacao-java
+./mvnw clean test
+./mvnw clean package
+```
+
+**Sem Docker**, com o PostgreSQL acessível e as variáveis definidas. No PowerShell:
+
+```powershell
+$env:DB_USER="seu_usuario"; $env:DB_PASSWORD="sua_senha"
+java -jar target\confirmacao-java.jar
+```
+
+Em outro terminal, na raiz do backend (com `JAVA_TCP_HOST=localhost` no `.env`), inicie a API com `npm start`. Para desligar o Java:
+
+```bash
+npm run java:shutdown
+```
+
+**Com Docker**, o Java sobe junto com o restante: `docker compose up -d --build`. A porta Java não é publicada, então o comando de desligamento roda dentro do contêiner da API:
+
+```bash
+docker compose exec api npm run java:shutdown
+```
+
+O comando imprime o `ComunicadoDeDesligamento` e sai com código 0. Em timeout, servidor indisponível ou resposta inesperada, sai com código diferente de zero. Não existe rota HTTP para desligar.
+
+No Compose o Java usa `restart: on-failure`: depois de um desligamento ordenado (código 0), ele não é religado sozinho. Para reiniciar:
+
+```bash
+docker compose up -d confirmacao-java
+```
+
+Enquanto o Java está parado, a API continua no ar e as operações que dependem dele respondem 503 `servicoValidacaoIndisponivel`.
+
+**Healthcheck:** o contêiner executa `VerificadorDeSaude`, um cliente Java que envia a operação `health` pelo próprio protocolo TCP e exige `sucesso: true`. Essa operação também consulta o PostgreSQL. Não há Actuator nem HTTP.
 
 ### Relação com o exemplo cliente-servidor ("Fazedor de Continhas")
 
@@ -226,11 +317,11 @@ O Actuator expõe somente `health`, sem detalhes (URL JDBC, versões ou credenci
 |---|---|
 | Servidor iniciado antes do cliente | Compose sobe o Java depois do PostgreSQL saudável; o Node é iniciado depois |
 | Servidor aguardando solicitações | `Servidor` abre um `ServerSocket` em `TCP_PORT` |
-| Host e porta por argumento | `JAVA_TCP_HOST=confirmacao-java` e `JAVA_TCP_PORT=3000` no Node |
-| Sockets e objetos serializados | TCP com JSON UTF-8 por linha, interoperável entre Node e Java |
-| Threads por cliente | `AceitadoraDeConexao` entrega cada socket a uma `SupervisoraDeConexao` em pool limitado |
-| Tratamento de indisponibilidade | Timeout/desconexão viram 503 sem derrubar a API; readiness percorre protocolo e PostgreSQL |
-| Desligamento manual | `docker compose stop` envia SIGTERM e o encerramento é gracioso |
+| Host e porta por argumento | `JAVA_TCP_HOST` e `JAVA_TCP_PORT` no Node |
+| `Parceiro` com entrada e saída | `BufferedReader` + `PrintWriter` sobre o socket, com strings JSON por linha |
+| Threads por cliente | `AceitadoraDeConexao` entrega cada socket a uma `SupervisoraDeConexao` (`Runnable`) em pool limitado |
+| `PedidoParaSair` / `ComunicadoDeDesligamento` | Desligamento ordenado com aviso a todos os clientes ativos |
+| Tratamento de indisponibilidade | Timeout/desconexão viram 503 sem derrubar a API; healthcheck percorre protocolo e PostgreSQL |
 
 ## Ambiente Docker: PostgreSQL, API e serviço Java
 
@@ -239,7 +330,7 @@ flowchart LR
   app["Aplicativo Expo<br/>(navegador ou celular)"]
   subgraph docker["Docker Compose · rede safra-net"]
     api["api<br/>Node.js + Express<br/>porta 4000"]
-    java["confirmacao-java<br/>Spring Boot · Java 21"]
+    java["confirmacao-java<br/>Java 21 · ServerSocket"]
     pg[("postgres<br/>PostgreSQL 17.11")]
     vol[["volume safra-pgdata"]]
   end
@@ -264,9 +355,9 @@ flowchart LR
 |---|---|---|---|
 | `postgres` | `postgres:17.11-alpine3.24` (oficial) | `127.0.0.1:${DB_PORT:-5432}` | `pg_isready` |
 | `api` | `safra/api:1.2.0` (build local, `node:24.19.0-alpine3.24`, usuário `node`) | `${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}` | `/health/ready` |
-| `confirmacao-java` | `safra/confirmacao-java:0.2.0` (build local) | nenhuma | readiness funcional interna: TCP + PostgreSQL |
+| `confirmacao-java` | `safra/confirmacao-java:0.2.0` (build local) | nenhuma | `VerificadorDeSaude`: operação `health` pelo TCP + PostgreSQL |
 
-Volume nomeado `safra-pgdata` (dados do PostgreSQL), rede `safra-net` e política `restart: unless-stopped`.
+Volume nomeado `safra-pgdata` (dados do PostgreSQL), rede `safra-net` e política `restart: unless-stopped` (o Java usa `on-failure`, para continuar parado depois de um desligamento ordenado).
 
 ### Comandos
 

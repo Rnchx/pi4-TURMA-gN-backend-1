@@ -8,7 +8,7 @@ Aceito
 
 O aplicativo continua usando HTTP com Node.js. Internamente, Node usa `node:net` como cliente e o Java usa `ServerSocket` como servidor. As mensagens são JSON UTF-8 delimitadas por LF, com identificador, operação, dados e resultado estruturado.
 
-Spring Boot permanece para injeção, JDBC, transações e healthcheck, não como transporte das operações de negócio. A porta TCP não é publicada pelo Compose.
+A porta TCP não é publicada pelo Compose. (Atualização: a ADR 0007 removeu o Spring Boot. Injeção, JDBC, transações e healthcheck passaram a ser código Java explícito.)
 
 ## Consequências
 

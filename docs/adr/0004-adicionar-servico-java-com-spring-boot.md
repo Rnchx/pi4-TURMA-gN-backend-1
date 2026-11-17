@@ -1,7 +1,7 @@
 # Adicionar serviço Java com Spring Boot ao backend
 
 ## Status
-Aceito
+Aceito. O uso de Spring Boot foi substituído pela ADR 0007 (Java Maven convencional, sem Spring).
 
 ## Contexto
 O projeto Safra 2.0 possui um backend principal desenvolvido em Node.js com Express.js e utiliza PostgreSQL como banco de dados. Durante o desenvolvimento, foi estabelecido pelo professor o requisito de implementar um componente em Java utilizando Docker, permitindo que as demais partes do projeto utilizem tecnologias diferentes.

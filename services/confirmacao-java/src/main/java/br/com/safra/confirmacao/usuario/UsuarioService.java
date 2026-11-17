@@ -13,15 +13,10 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import br.com.safra.confirmacao.banco.Banco;
+import br.com.safra.confirmacao.banco.BancoException;
 
 /** Validação definitiva, persistência de usuários e limitação de tentativas de login. */
-@Service
 public class UsuarioService {
     private static final Pattern NOME = Pattern.compile("^[\\p{L}]+(?:['’-][\\p{L}]+)*(?: [\\p{L}]+(?:['’-][\\p{L}]+)*)+$");
     private static final String PARTE_EMAIL = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+";
@@ -49,12 +44,12 @@ public class UsuarioService {
     private record LinhaUsuario(UUID id, String nome, String email, String senhaHash, LocalDate dataNascimento,
             String fotoPerfilChave, String criadoEm) {}
 
-    private final JdbcTemplate jdbc;
+    private final Banco banco;
     private final Clock clock;
-    private final PasswordEncoder encoder = new Argon2PasswordEncoder(16, 32, 1, 16384, 3);
+    private final SenhaArgon2 encoder = new SenhaArgon2();
 
-    public UsuarioService(JdbcTemplate jdbc, Clock clock) {
-        this.jdbc = jdbc;
+    public UsuarioService(Banco banco, Clock clock) {
+        this.banco = banco;
         this.clock = clock;
     }
 
@@ -69,9 +64,9 @@ public class UsuarioService {
         if (existe("email", email)) throw new OperacaoException("emailDuplicado", "Este e-mail já está cadastrado.");
         UUID id = UUID.randomUUID();
         try {
-            jdbc.update("INSERT INTO usuarios(id, nome, cpf, email, senha_hash, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)",
-                    id, nome, cpf, email, encoder.encode(pedido.senha()), nascimento);
-        } catch (DataIntegrityViolationException corrida) {
+            banco.atualizar("INSERT INTO usuarios(id, nome, cpf, email, senha_hash, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)",
+                    id, nome, cpf, email, encoder.codificar(pedido.senha()), nascimento);
+        } catch (BancoException.ViolacaoDeIntegridade corrida) {
             if (existe("cpf", cpf)) throw new OperacaoException("cpfDuplicado", "Este CPF já está cadastrado.");
             if (existe("email", email)) throw new OperacaoException("emailDuplicado", "Este e-mail já está cadastrado.");
             throw corrida;
@@ -84,12 +79,12 @@ public class UsuarioService {
         if (pedido == null || vazio(pedido.email()) || vazio(pedido.senha())) throw dados("Preencha e-mail e senha.");
         String email = normalizarEmail(pedido.email(), false);
         String identificador = sha256(email);
-        if (Boolean.TRUE.equals(jdbc.query("SELECT bloqueado_ate > now() FROM tentativas_login WHERE identificador_hash = ?",
+        if (Boolean.TRUE.equals(banco.extrair("SELECT bloqueado_ate > now() FROM tentativas_login WHERE identificador_hash = ?",
                 rs -> rs.next() && rs.getBoolean(1), identificador))) {
             throw new OperacaoException("tentativasExcedidas", "Muitas tentativas. Aguarde alguns minutos e tente novamente.");
         }
         var usuario = buscarPorEmail(email);
-        boolean valido = usuario != null && encoder.matches(pedido.senha(), usuario.senhaHash());
+        boolean valido = usuario != null && encoder.confere(pedido.senha(), usuario.senhaHash());
         if (!valido) {
             int tentativas = registrarFalha(identificador);
             if (tentativas >= MAX_TENTATIVAS) {
@@ -97,7 +92,7 @@ public class UsuarioService {
             }
             throw new OperacaoException("credenciaisInvalidas", "E-mail ou senha inválidos.");
         }
-        jdbc.update("DELETE FROM tentativas_login WHERE identificador_hash = ?", identificador);
+        banco.atualizar("DELETE FROM tentativas_login WHERE identificador_hash = ?", identificador);
         return new RespostaUsuario(resposta(usuario));
     }
 
@@ -112,25 +107,27 @@ public class UsuarioService {
         }
         UUID id = uuid(pedido.usuarioId());
         String nome = normalizarNome(pedido.nome());
-        if (jdbc.update("UPDATE usuarios SET nome = ?, atualizado_em = now() WHERE id = ? AND ativo", nome, id) != 1) {
+        if (banco.atualizar("UPDATE usuarios SET nome = ?, atualizado_em = now() WHERE id = ? AND ativo", nome, id) != 1) {
             throw naoAutorizado();
         }
         return new RespostaUsuario(resposta(buscarObrigatorio(id)));
     }
 
-    @Transactional
     public RespostaUsuario alterarSenha(AlteracaoSenha pedido) {
         if (pedido == null || vazio(pedido.senhaAtual())) throw dados("Informe a senha atual.");
         UUID id = uuid(pedido.usuarioId());
-        LinhaUsuario usuario = buscarObrigatorio(id);
-        if (!encoder.matches(pedido.senhaAtual(), usuario.senhaHash())) {
-            throw new OperacaoException("senhaAtualIncorreta", "A senha atual está incorreta.");
-        }
-        validarSenha(pedido.novaSenha(), pedido.confirmacaoNovaSenha());
-        if (encoder.matches(pedido.novaSenha(), usuario.senhaHash())) throw dados("A nova senha deve ser diferente da senha atual.");
-        jdbc.update("UPDATE usuarios SET senha_hash = ?, atualizado_em = now() WHERE id = ?", encoder.encode(pedido.novaSenha()), id);
-        jdbc.update("DELETE FROM sessoes WHERE usuario_id = ?", id);
-        return new RespostaUsuario(resposta(buscarObrigatorio(id)));
+        // Troca da senha e invalidação das sessões na mesma transação.
+        return banco.emTransacao(() -> {
+            LinhaUsuario usuario = buscarObrigatorio(id);
+            if (!encoder.confere(pedido.senhaAtual(), usuario.senhaHash())) {
+                throw new OperacaoException("senhaAtualIncorreta", "A senha atual está incorreta.");
+            }
+            validarSenha(pedido.novaSenha(), pedido.confirmacaoNovaSenha());
+            if (encoder.confere(pedido.novaSenha(), usuario.senhaHash())) throw dados("A nova senha deve ser diferente da senha atual.");
+            banco.atualizar("UPDATE usuarios SET senha_hash = ?, atualizado_em = now() WHERE id = ?", encoder.codificar(pedido.novaSenha()), id);
+            banco.atualizar("DELETE FROM sessoes WHERE usuario_id = ?", id);
+            return new RespostaUsuario(resposta(buscarObrigatorio(id)));
+        });
     }
 
     public RespostaFoto alterarFoto(AlteracaoFoto pedido) {
@@ -139,34 +136,35 @@ public class UsuarioService {
         String chave = pedido.fotoPerfilChave();
         if (chave != null && !FOTO.matcher(chave).matches()) throw dados("A referência da foto é inválida.");
         LinhaUsuario atual = buscarObrigatorio(id);
-        jdbc.update("UPDATE usuarios SET foto_perfil_chave = ?, atualizado_em = now() WHERE id = ?", chave, id);
+        banco.atualizar("UPDATE usuarios SET foto_perfil_chave = ?, atualizado_em = now() WHERE id = ?", chave, id);
         return new RespostaFoto(atual.fotoPerfilChave(), chave != null);
     }
 
-    @Transactional
     public RespostaExclusao excluir(Exclusao pedido) {
         if (pedido == null || vazio(pedido.senhaAtual())) throw dados("Informe sua senha para excluir a conta.");
         UUID id = uuid(pedido.usuarioId());
-        LinhaUsuario usuario = buscarObrigatorio(id);
-        if (!encoder.matches(pedido.senhaAtual(), usuario.senhaHash())) {
-            throw new OperacaoException("senhaAtualIncorreta", "A senha atual está incorreta.");
-        }
-        jdbc.update("DELETE FROM tentativas_login WHERE identificador_hash = ?", sha256(usuario.email()));
-        if (jdbc.update("DELETE FROM usuarios WHERE id = ?", id) != 1) throw naoAutorizado();
-        return new RespostaExclusao(usuario.fotoPerfilChave());
+        return banco.emTransacao(() -> {
+            LinhaUsuario usuario = buscarObrigatorio(id);
+            if (!encoder.confere(pedido.senhaAtual(), usuario.senhaHash())) {
+                throw new OperacaoException("senhaAtualIncorreta", "A senha atual está incorreta.");
+            }
+            banco.atualizar("DELETE FROM tentativas_login WHERE identificador_hash = ?", sha256(usuario.email()));
+            if (banco.atualizar("DELETE FROM usuarios WHERE id = ?", id) != 1) throw naoAutorizado();
+            return new RespostaExclusao(usuario.fotoPerfilChave());
+        });
     }
 
     private LinhaUsuario buscarPorEmail(String email) {
-        return jdbc.query("SELECT id, nome, email, senha_hash, data_nascimento, foto_perfil_chave, criado_em FROM usuarios WHERE email = ? AND ativo",
-                (rs, n) -> new LinhaUsuario(rs.getObject("id", UUID.class), rs.getString("nome"), rs.getString("email"),
+        return banco.lista("SELECT id, nome, email, senha_hash, data_nascimento, foto_perfil_chave, criado_em FROM usuarios WHERE email = ? AND ativo",
+                rs -> new LinhaUsuario(rs.getObject("id", UUID.class), rs.getString("nome"), rs.getString("email"),
                         rs.getString("senha_hash"), rs.getObject("data_nascimento", LocalDate.class),
                         rs.getString("foto_perfil_chave"), rs.getObject("criado_em").toString()), email)
                 .stream().findFirst().orElse(null);
     }
 
     private LinhaUsuario buscarObrigatorio(UUID id) {
-        LinhaUsuario usuario = jdbc.query("SELECT id, nome, email, senha_hash, data_nascimento, foto_perfil_chave, criado_em FROM usuarios WHERE id = ? AND ativo",
-                (rs, n) -> new LinhaUsuario(rs.getObject("id", UUID.class), rs.getString("nome"), rs.getString("email"),
+        LinhaUsuario usuario = banco.lista("SELECT id, nome, email, senha_hash, data_nascimento, foto_perfil_chave, criado_em FROM usuarios WHERE id = ? AND ativo",
+                rs -> new LinhaUsuario(rs.getObject("id", UUID.class), rs.getString("nome"), rs.getString("email"),
                         rs.getString("senha_hash"), rs.getObject("data_nascimento", LocalDate.class),
                         rs.getString("foto_perfil_chave"), rs.getObject("criado_em").toString()), id)
                 .stream().findFirst().orElse(null);
@@ -183,7 +181,7 @@ public class UsuarioService {
     }
 
     private int registrarFalha(String hash) {
-        return jdbc.queryForObject("""
+        return banco.valor("""
                 INSERT INTO tentativas_login(identificador_hash, tentativas) VALUES (?, 1)
                 ON CONFLICT (identificador_hash) DO UPDATE SET
                   tentativas = CASE WHEN tentativas_login.janela_iniciada_em < now() - interval '15 minutes'
@@ -198,7 +196,7 @@ public class UsuarioService {
 
     private boolean existe(String coluna, String valor) {
         if (!coluna.equals("cpf") && !coluna.equals("email")) throw new IllegalArgumentException();
-        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM usuarios WHERE " + coluna + " = ?)", Boolean.class, valor));
+        return Boolean.TRUE.equals(banco.valor("SELECT EXISTS(SELECT 1 FROM usuarios WHERE " + coluna + " = ?)", Boolean.class, valor));
     }
 
     static String normalizarNome(String valor) {

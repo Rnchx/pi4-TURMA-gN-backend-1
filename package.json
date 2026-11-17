@@ -1,6 +1,6 @@
 {
   "name": "node-tds-2023-alunos",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Projeto de ensino para o curso técnico em Desenvolvimento de Sistemas SENAI - Valinhos",
   "main": "src/server.js",
   "repository": "https://github.com/FelipeSantos92Dev/node-tds-2023-instrutor",
@@ -15,7 +15,8 @@
     "db:migrate": "node src/database/cli.js migrate",
     "db:seed": "node src/database/cli.js seed",
     "verify:images": "node scripts/verify-catalog-images.js",
-    "verify:photo-persistence": "node scripts/verify-photo-persistence.js"
+    "verify:photo-persistence": "node scripts/verify-photo-persistence.js",
+    "java:shutdown": "node scripts/shutdown-java.js"
   },
   "keywords": [
     "nodejs",

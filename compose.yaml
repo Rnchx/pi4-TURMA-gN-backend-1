@@ -29,11 +29,11 @@ services:
   confirmacao-java:
     build:
       context: ./services/confirmacao-java
-    image: safra/confirmacao-java:0.3.0
+    image: safra/confirmacao-java:0.4.0
     environment:
-      SPRING_PROFILES_ACTIVE: docker
-      SERVER_PORT: ${JAVA_SERVER_PORT:-8080}
       TCP_PORT: ${JAVA_TCP_PORT:-3000}
+      # Dentro do contêiner o servidor escuta em todas as interfaces da rede safra-net (porta não publicada).
+      TCP_BIND_ADDRESS: 0.0.0.0
       TCP_TIMEOUT_MS: ${JAVA_TCP_TIMEOUT_MS:-10000}
       TCP_MAX_MESSAGE_BYTES: ${JAVA_TCP_MAX_MESSAGE_BYTES:-32768}
       # Dentro da rede do Compose o banco é o serviço "postgres", na porta interna 5432.
@@ -42,28 +42,30 @@ services:
       DB_NAME: ${DB_NAME:-safra}
       DB_USER: ${DB_USER:?Defina DB_USER no .env}
       DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env}
-    # Nenhuma porta é publicada: TCP e healthcheck ficam restritos à rede safra-net.
+    # Nenhuma porta é publicada: o TCP fica restrito à rede safra-net.
     expose:
       - "${JAVA_TCP_PORT:-3000}"
-      - "${JAVA_SERVER_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
+    # Healthcheck pelo protocolo TCP (operação "health", que também consulta o PostgreSQL).
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null \"http://127.0.0.1:$${SERVER_PORT}/actuator/health/readiness\" || exit 1"]
+      test: ["CMD", "java", "-XX:TieredStopAtLevel=1", "-cp", "/app/app.jar", "br.com.safra.confirmacao.tcp.VerificadorDeSaude"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 6
-      start_period: 40s
+      start_period: 20s
     stop_grace_period: 30s
-    restart: unless-stopped
+    # on-failure: depois de um desligamento ordenado (npm run java:shutdown, código 0) o Docker não religa o Java.
+    # Para voltar: docker compose up -d confirmacao-java
+    restart: on-failure
     networks:
       - safra
 
   api:
     build:
       context: .
-    image: safra/api:1.4.0
+    image: safra/api:1.5.0
     environment:
       NODE_ENV: ${API_NODE_ENV:-development}
       PORT: 4000
