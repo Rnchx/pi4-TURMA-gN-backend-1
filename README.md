@@ -18,6 +18,94 @@
 
 API responsável pelas regras de negócio, pelo gerenciamento de dados e pela integração dos serviços do Safra Online v2.0, um aplicativo de supermercado digital desenvolvido para fins acadêmicos.
 
+## Entrega final — como rodar
+
+O **SAFRA Online** é um supermercado digital acadêmico com aplicativo React Native e Expo, API Node.js, servidor Java 21 por socket TCP e PostgreSQL. A pessoa cria uma conta, consulta produtos, monta o carrinho e conclui uma compra demonstrativa sem cobrança.
+
+### Integrantes e papéis
+
+| Integrante | RA | Responsabilidade principal |
+|---|---:|---|
+| Alex Hideki Nakamura Novaes | 25007991 | Servidor Java, socket TCP, Docker e backend |
+| Felipe Gabriel Freire Parra | 25003341 | API Node.js, PostgreSQL e Docker |
+| João Pedro Rocha | 25003959 | Aplicativo React Native e design |
+| João Vitor Peres Peternella | 25004637 | Documentação, diagramas e apoio ao frontend |
+| Marcelo Muller Del Mondo | 25000638 | Aplicativo React Native e design |
+
+### Repositórios
+
+- Backend principal, banco, Docker e servidor Java: <https://github.com/Rnchx/pi4-TURMA-gN-backend-1>
+- Aplicativo React Native e Expo: <https://github.com/Rnchx/pi4-TURMA-gN-frontend>
+
+### Pré-requisitos
+
+- Git;
+- Docker Desktop com Docker Compose v2;
+- Node.js 22 ou superior e npm para executar o aplicativo;
+- Expo Go compatível com SDK 58 para testar em celular.
+
+Java 21 e Maven Wrapper são necessários somente para executar o servidor Java fora do Docker.
+
+### Como subir
+
+1. Clone o backend e entre na pasta:
+
+   ```powershell
+   git clone https://github.com/Rnchx/pi4-TURMA-gN-backend-1.git
+   cd pi4-TURMA-gN-backend-1
+   ```
+
+2. Crie o arquivo de ambiente e defina `DB_USER` e `DB_PASSWORD`:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+3. Valide e suba o ambiente:
+
+   ```powershell
+   docker compose config --quiet
+   docker compose up -d --build
+   docker compose exec api node src/database/cli.js seed
+   docker compose ps
+   Invoke-RestMethod http://localhost:4000/health/ready
+   ```
+
+4. Em outra pasta, clone e prepare o aplicativo:
+
+   ```powershell
+   git clone https://github.com/Rnchx/pi4-TURMA-gN-frontend.git
+   cd pi4-TURMA-gN-frontend
+   npm ci
+   Copy-Item .env.example .env.local
+   ```
+
+5. Em `.env.local`, use `EXPO_PUBLIC_API_URL=http://localhost:4000` para navegador. Para celular na mesma rede, substitua `localhost` pelo IP do computador.
+
+6. Inicie o aplicativo:
+
+   ```powershell
+   npx expo start --lan --clear
+   ```
+
+   Pressione `w` para abrir no navegador ou escaneie o QR Code no Expo Go.
+
+### Como usar
+
+1. Crie uma conta na tela de cadastro e entre; não existe usuário fixo de teste.
+2. Escolha um setor ou uma oferta e abra os detalhes de um produto.
+3. Adicione produtos ao carrinho e altere quantidades se necessário.
+4. No resumo, teste `PRIMEIRA40` na primeira compra ou `QUERO100`.
+5. Escolha um método de pagamento fictício e confirme a compra demonstrativa.
+6. Consulte as três compras recentes em **Carrinho → Histórico** ou repita uma compra.
+7. Use **Meu perfil** para nome, foto, senha, saída ou exclusão e **Configurações** para alternar o tema.
+
+### Documentação da entrega
+
+O documento de projeto em Markdown está em [`docs/documento-de-projeto.md`](docs/documento-de-projeto.md). Os contratos ficam em [`docs/contratos`](docs/contratos), as decisões em [`docs/adr`](docs/adr) e o roteiro de testes em [`docs/VALIDACAO.md`](docs/VALIDACAO.md).
+
+> Esta seção corresponde ao capítulo 9 do documento de projeto e foi escrita para permitir que uma pessoa suba o sistema do zero seguindo apenas o README.
+
 ## Sobre o projeto
 
 O **Safra Online** é uma evolução do projeto Safra Online v1.0, criado com o objetivo de modernizar a experiência de compras em um supermercado digital.
