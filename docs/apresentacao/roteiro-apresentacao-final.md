@@ -8,12 +8,12 @@ A apresentação termina aos 5:00 mesmo que não tenha acabado, e o cumprimento 
 
 ## Divisão do tempo
 
-| Tempo | Parte | Slide | Quem fala |
-|---|---|---|---|
-| 0:00–1:00 | O problema: que situação o SAFRA resolve e para quem | Capa e "O problema" | _definir_ |
-| 1:00–4:00 | O sistema funcionando, do cadastro à compra confirmada | "Um caso do começo ao fim" e passos 1 a 4 | _definir_ |
-| 4:00–5:00 | Como é montado: contêineres e socket TCP entre os backends | "Três contêineres e um socket TCP" | _definir_ |
-| 5:00–10:00 | Arguição | "Obrigado. Perguntas?" | quem o professor chamar |
+| Tempo | Parte | Slide |
+|---|---|---|
+| 0:00–1:00 | O problema: que situação o SAFRA resolve e para quem | Capa e "O problema" |
+| 1:00–4:00 | O sistema funcionando, do cadastro à compra confirmada | "Um caso do começo ao fim" e passos 1 a 4 |
+| 4:00–5:00 | Como é montado: contêineres e socket TCP entre os backends | "Três contêineres e um socket TCP" |
+| 5:00–10:00 | Arguição | "Obrigado. Perguntas?" |
 
 ## Demonstração (1:00–4:00)
 
@@ -45,6 +45,6 @@ As perguntas saem do [Documento de Projeto](../documento-de-projeto.md), do cód
 
 - [ ] Ensaiar com cronômetro: cinco minutos passam muito rápido
 - [ ] Testar o sistema (ou o vídeo) no computador da apresentação
-- [ ] Definir quem fala em cada parte e preencher a tabela acima
+- [ ] Combinar quem fala em cada parte
 - [ ] Deixar os dados da conta nova prontos para colar no cadastro
 - [ ] Revisar juntos o Documento de Projeto entregue na Tarefa 6
