@@ -262,3 +262,5 @@ A entrega cumpre o fluxo principal de um supermercado digital acadêmico e integ
 - [README do backend](../README.md)
 - [Release v1.5.0](https://github.com/Rnchx/pi4-TURMA-gN-backend-1/releases/tag/v1.5.0)
 - [Quadro do projeto](https://srv1889234.hstgr.cloud/projects/pi-iv-0101-g1/sprints/4/taskboard)
+- [Cronograma do desenvolvimento por responsável (Gantt)](https://srv1889234.hstgr.cloud/projects/pi-iv-0101-g1/gantt?query_id=338)
+- [Roteiro da apresentação final](apresentacao/roteiro-apresentacao-final.md)
